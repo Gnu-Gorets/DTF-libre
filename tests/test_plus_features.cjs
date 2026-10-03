@@ -111,5 +111,34 @@ vm.runInNewContext(`${source.slice(feedStart, feedEnd)}\nglobalThis.feedMetricsT
   assert.equal(JSON.parse(storage.get('user')).isPlus, true);
   const plain = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
   assert.deepEqual((await plain.json()).result.items.map(x => x.leonardoUuid), ['new']);
+  const reactionsUrl = 'https://api.dtf.ru/v2.10/content/5333217/reactions';
+  const denied = code => Response.json({ message: 'Forbidden', error: { code: 403, info: { errorCode: code } } }, { status: 403, headers: { 'content-length': '123', 'content-encoding': 'gzip', 'x-test': 'kept' } });
+  fetchResponse = denied('PLUS_SUBSCRIPTION_REQUIRED');
+  assert.equal(await page.fetch(reactionsUrl), fetchResponse, 'disabled substitution preserves subscription error');
+  settings.plusFeatures = true;
+  for (const url of [reactionsUrl, 'https://api.dtf.ru/v2.9/comment/123/reactions?limit=20']) {
+    const restored = await page.fetch(url);
+    assert.equal(restored.status, 200);
+    assert.equal(restored.ok, true);
+    assert.deepEqual(await restored.json(), { message: '', result: { reactions: [], lastSortingValue: null } });
+    assert.equal(restored.headers.get('content-length'), null);
+    assert.equal(restored.headers.get('content-encoding'), null);
+    assert.equal(restored.headers.get('x-test'), 'kept');
+    assert.equal((await fetchResponse.clone().json()).error.info.errorCode, 'PLUS_SUBSCRIPTION_REQUIRED', 'original body remains readable');
+  }
+  for (const url of ['https://example.com/v2.10/content/123/reactions', 'https://api.dtf.ru/v2.10/content/123/reactions/add', 'https://api.dtf.ru/v2.10/messenger']) {
+    assert.equal(await page.fetch(url), fetchResponse, 'unrelated endpoint remains unchanged');
+  }
+  assert.equal(await page.fetch(reactionsUrl, { method: 'POST' }), fetchResponse, 'never fake successful writes');
+  assert.equal(await page.fetch(new Request(reactionsUrl, { method: 'POST' })), fetchResponse);
+  assert.equal((await page.fetch(new Request(reactionsUrl))).status, 200);
+  for (const code of ['AUTHORIZATION_REQUIRED', 'ACCESS_DENIED', undefined]) {
+    fetchResponse = denied(code);
+    assert.equal(await page.fetch(reactionsUrl), fetchResponse, 'preserve non-subscription errors');
+  }
+  for (const response of [Response.json({ result: { reactions: [{ id: 1 }] } }), new Response('not JSON', { status: 403 }), Response.json({ error: { info: { errorCode: 'PLUS_SUBSCRIPTION_REQUIRED' } } }, { status: 500 })]) {
+    fetchResponse = response;
+    assert.equal(await page.fetch(reactionsUrl), response, 'preserve success, invalid JSON, and server failure');
+  }
   console.log('OK: Plus, GIF history, viewed-post TTL, and right-column modes');
 })().catch(error => { console.error(error); process.exitCode = 1; });
