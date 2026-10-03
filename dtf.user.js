@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF: ширина и изображения
 // @namespace    https://dtf.ru/
-// @version      0.0.26
+// @version      0.0.67
 // @description  Адаптивная ширина ленты и настройки изображений
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -13,6 +13,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @connect      api.dtf.ru
+// @connect      api.dtfrandomizer.xyz
 // @run-at       document-start
 // ==/UserScript==
 
@@ -70,12 +71,51 @@
     syncPlus(true);
   });
   const originalFetch = page.fetch;
+  const commentFeedListeners = new Set();
+  const recentCommentResponses = [];
   page.fetch = function (...args) {
     const response = originalFetch.apply(this, args);
     const url = args[0]?.url || String(args[0]);
+    const observed = /api\.(?:dtf|vc)\.ru\/v\d+\.\d+\/(?:feed|recommendations|timeline|comments)/.test(url)
+      ? response.then((result) => {
+          result.clone().json().then((data) => {
+            const items = data?.result?.items;
+            if (Array.isArray(items)) {
+              const entry = { url: String(url), items };
+              recentCommentResponses.push(entry);
+              if (recentCommentResponses.length > 20) recentCommentResponses.shift();
+              commentFeedListeners.forEach((listener) => listener(entry));
+            }
+          }).catch(() => {});
+          return result;
+        })
+      : response;
+    if (
+      get("plusFeatures", false) &&
+      (args[1]?.method || args[0]?.method || "GET").toUpperCase() === "GET" &&
+      /^https:\/\/api\.dtf\.ru\/v\d+\.\d+\/(?:content|comment)\/\d+\/reactions(?:\?|$)/.test(url)
+    ) {
+      return observed.then(async (result) => {
+        if (result.status !== 403) return result;
+        try {
+          const data = await result.clone().json();
+          if (data?.error?.info?.errorCode !== "PLUS_SUBSCRIPTION_REQUIRED")
+            return result;
+          const headers = new page.Headers(result.headers);
+          headers.delete("content-length");
+          headers.delete("content-encoding");
+          return new page.Response(
+            JSON.stringify({ message: "", result: { reactions: [], lastSortingValue: null } }),
+            { status: 200, statusText: "OK", headers },
+          );
+        } catch {
+          return result;
+        }
+      });
+    }
     if (!url.includes("/favorite-gifs") || !get("plusFeatures", false))
-      return response;
-    return response.then(async (result) => {
+      return observed;
+    return observed.then(async (result) => {
       try {
         const user = JSON.parse(page.localStorage.getItem("user") || "null");
         if (
@@ -508,6 +548,8 @@
     hideRating: "dtf-vm-hide-rating",
     hideGames: "dtf-vm-hide-games",
     hideTopics: "dtf-vm-hide-topics",
+    hideDonationsMenu: "dtf-vm-hide-donations-menu",
+    hidePlusMenu: "dtf-vm-hide-plus-menu",
   };
   const applySidebarClasses = (root) => {
     for (const [key, className] of Object.entries(sidebarOptions))
@@ -552,14 +594,14 @@
     .dtf-vm-minimized-post .dtf-vm-viewed-button svg { transform: rotate(180deg); }
     .dtf-vm-subsetting { margin-left: 28px !important; padding-left: 12px; border-left: 2px solid #414348; }
     .dtf-vm-overlay { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; padding: 16px; background: #000b; font: 14px/1.4 Arial,sans-serif; }
-    .dtf-vm-dialog, .dtf-vm-dialog * { box-sizing: border-box; font-family: Arial,sans-serif !important; line-height: 1.4; }
-    .dtf-vm-dialog { position: relative; width: min(860px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 16px; color: #f4f4f4 !important; background: #27282b !important; border: 1px solid #414348; border-radius: 8px; box-shadow: 0 12px 40px #0009; }
-    .dtf-vm-dialog h2 { margin: 0 0 12px; color: inherit !important; font-size: 21px; }
-    .dtf-vm-settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 20px; }
+    .dtf-vm-dialog, .dtf-vm-dialog * { box-sizing: border-box; font-family: Arial,sans-serif !important; line-height: 1.3; }
+    .dtf-vm-dialog { position: relative; width: min(900px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 12px; color: #f4f4f4 !important; background: #27282b !important; border: 1px solid #414348; border-radius: 8px; box-shadow: 0 12px 40px #0009; }
+    .dtf-vm-dialog h2 { margin: 0 0 6px; color: inherit !important; font-size: 21px; }
+    .dtf-vm-settings-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 16px; }
     .dtf-vm-settings-column { min-width: 0; }
     @media (max-width: 700px) { .dtf-vm-dialog { width: min(460px, 100%); } .dtf-vm-settings-grid { grid-template-columns: 1fr; gap: 0; } }
     .dtf-vm-dialog h3 { margin: 0 0 6px; color: #aeb4c0 !important; font-size: 14px; }
-    .dtf-vm-section { padding: 10px 0; border-top: 1px solid #414348; }
+    .dtf-vm-section { padding: 6px 0; border-top: 1px solid #414348; }
     .dtf-vm-personalization-header { display: flex; align-items: center; justify-content: space-between; }
     .dtf-vm-dialog .dtf-vm-personalization-header h3 { margin: 0; }
     .dtf-vm-dialog .dtf-vm-personalization-header label { display: flex; align-items: center; margin: 0; }
@@ -577,15 +619,15 @@
     .dtf-vm-theme-actions button { padding: 6px 10px; color: #e2e6ec; background: #272a30; border: 1px solid #454a53; border-radius: 8px; cursor: pointer; white-space: nowrap; }
     .dtf-vm-theme-actions input { flex: 1; min-width: 0; padding: 7px 10px; color: inherit; background: #202329; border: 1px solid #454a53; border-radius: 8px; }
     .dtf-vm-section:first-of-type { padding-top: 0; border-top: 0; }
-    .dtf-vm-dialog label { display: block; margin: 7px 0; color: inherit !important; font-size: 13px; }
+    .dtf-vm-dialog label { display: block; margin: 2px 0; color: inherit !important; font-size: 13px; }
     .dtf-vm-dialog label:last-child { margin-bottom: 0; }
     .dtf-vm-dialog label.dtf-vm-disabled { opacity: .45; }
-    .dtf-vm-dialog input[type=range] { appearance: none; display: block; width: 100%; height: 24px; margin: 8px 0 0; background: transparent !important; cursor: pointer; }
+    .dtf-vm-dialog input[type=range] { appearance: none; display: block; width: 100%; height: 20px; margin: 4px 0 0; background: transparent !important; cursor: pointer; }
     .dtf-vm-dialog input[type=range]::-webkit-slider-runnable-track { height: 6px; background: #555a64; border-radius: 6px; }
     .dtf-vm-dialog input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; margin-top: -6px; background: #1685ff; border: 0; border-radius: 50%; }
     .dtf-vm-dialog input[type=range]::-moz-range-track { height: 6px; background: #555a64; border-radius: 6px; }
     .dtf-vm-dialog input[type=range]::-moz-range-thumb { width: 18px; height: 18px; background: #1685ff; border: 0; border-radius: 50%; }
-    .dtf-vm-dialog input[type=checkbox] { appearance: auto; width: 18px; height: 18px; margin: 0 8px 0 0; accent-color: #1685ff; vertical-align: middle; }
+    .dtf-vm-dialog input[type=checkbox] { appearance: auto; width: 16px; height: 16px; margin: 0 7px 0 0; accent-color: #1685ff; vertical-align: middle; }
     .dtf-vm-reset-topics { margin-top: 4px; padding: 8px 12px; color: #d7dbe2; background: #34363b; border: 1px solid #50535a; border-radius: 6px; font-size: 13px; cursor: pointer; }
     .dtf-vm-reset-topics:hover { color: #fff; background: #41444a; }
     .dtf-vm-reset-topics:focus-visible { outline: 2px solid #1685ff; outline-offset: 2px; }
@@ -607,6 +649,7 @@
     html.dtf-vm-reorder-topics .sidebar__section:has(> .sidebar__title[data-section="topics"]) .sidebar-item:not(.dtf-vm-topic-show-all) { cursor: grab; }
     html.dtf-vm-reorder-topics .sidebar__section:has(> .sidebar__title[data-section="topics"]) .sidebar-item.dtf-vm-dragging { opacity: .4; }
     html.dtf-vm-hide-footer .sidebar__section:has(> .sidebar__title[data-section="footer"]) { display: none !important; }
+    html.dtf-vm-hide-donations-menu [href*="/donat"], html.dtf-vm-hide-plus-menu [href*="/plus"] { display: none !important; }
     html.dtf-vm-waiting-css body { visibility: hidden !important; }
     @media (min-width: 1240px) {
       html.dtf-vm-hide-right-sidebar .layout > .aside.aside--right { display: none !important; }
@@ -631,7 +674,30 @@
     html.dtf-vm-hide-plus-ads .sidebar__section:has(> .sidebar__title[data-section="services"]), html.dtf-vm-hide-plus-ads a.sidebar-item[href="https://edu.vc.ru/chatgpt"], html.dtf-vm-hide-plus-ads a.sidebar-item[href="https://edu.vc.ru"], html.dtf-vm-hide-plus-ads a.sidebar-item[href="/store"] { display: none !important; }
     html.dtf-vm-small-fixes .textarea:has(textarea), html.dtf-vm-small-fixes .textarea:has([contenteditable="true"]), html.dtf-vm-small-fixes [class*="comment"] .textarea { padding: 4px 8px !important; border-radius: 6px !important; }
     html.dtf-vm-small-fixes .textarea textarea, html.dtf-vm-small-fixes .textarea [contenteditable="true"], html.dtf-vm-small-fixes .textarea__input, html.dtf-vm-small-fixes [class*="comment"] textarea, html.dtf-vm-small-fixes [class*="comment"] [contenteditable="true"] { padding: 4px 8px !important; border-radius: 4px !important; }
-    .dtf-vm-hint { display: block; margin: 2px 0 0 26px; color: #aeb4c0; font-size: 11px; }
+    .dtf-vm-hint { display: block; margin: 1px 0 0 26px; color: #aeb4c0; font-size: 11px; }
+    [data-dtf-vm-hidden] { display: none !important; }
+    [data-dtf-vm-hidden][data-dtf-vm-restore="1"] { display: inline-flex !important; align-items: center; width: auto !important; max-width: max-content; padding: 6px 12px; border: 1px solid #8884; border-radius: 8px; background: #8882; cursor: pointer; }
+    [data-dtf-vm-hidden][data-dtf-vm-restore="1"] > * { display: none !important; }
+    [data-dtf-vm-hidden][data-dtf-vm-restore="1"]::after { content: attr(data-dtf-vm-label); font-size: 13px; }
+    .dtf-vm-nocomment { width: 20px; height: 20px; vertical-align: middle; }
+    .dtf-vm-nocomment-hidden { display: none !important; }
+    html.dtf-vm-show-removed-comments .comment--hidden .comment__content { display: block !important; }
+    .dtf-vm-edits { margin-left: 5px; }
+    .dtf-vm-hidden-comments { margin-left: 6px; }
+    .dtf-vm-quote { position: absolute; z-index: 1000; padding: 5px 10px; border: 0; border-radius: 10px; background: #232324; color: white; cursor: pointer; font: italic 14px Arial,sans-serif; }
+    .dtf-vm-comment-overlay { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; padding: 16px; background: #0008; }
+    .dtf-vm-comment-dialog { width: min(600px, 90vw); max-height: 80vh; overflow: auto; padding: 20px; border-radius: 12px; color: var(--theme-color-text-primary); background: var(--theme-color-background-content); }
+    .dtf-vm-comment-dialog header { display: flex; justify-content: space-between; margin-bottom: 12px; font-weight: 600; }
+    .dtf-vm-comment-dialog header button { border: 0; color: inherit; background: none; font-size: 20px; cursor: pointer; }
+    .dtf-vm-comment-dialog article { padding: 12px 0; white-space: pre-wrap; border-top: 1px solid var(--theme-color-border); }
+    .dtf-vm-comment-dialog article.dtf-vm-comment-row { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--theme-color-border); border-radius: 8px; white-space: normal; }
+    .dtf-vm-comment-meta, .dtf-vm-comment-author { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .dtf-vm-comment-author { gap: 6px; color: inherit; text-decoration: none; }
+    .dtf-vm-comment-author img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; }
+    .dtf-vm-comment-reply { color: var(--theme-color-text-secondary); }
+    .dtf-vm-comment-date { margin-left: auto; color: var(--theme-color-text-secondary); font-size: 12px; }
+    .dtf-vm-comment-text { white-space: pre-wrap; }
+    .dtf-vm-comment-media img, .dtf-vm-comment-media video { display: block; max-width: 100%; max-height: 400px; border-radius: 8px; }
   `;
   const personalizationColors = {
     accent: ["Акцент", "#1685ff", ["--theme-color-accent"]],
@@ -783,7 +849,434 @@
     });
   }
 
+  const expandComments = () => {
+    const limits = new WeakSet();
+    const pendingLimits = new WeakSet();
+    const timers = new Set();
+    let pumping = false;
+    const queue = new Set();
+    const hiddenSelector = ".comment--hidden";
+    const branchSelector = ".link-button.link-button--small.comment__expand";
+    const expandLimit = (limit, clicks = 0, misses = 0) => {
+      if (!get("expandComments", true) || !limit.isConnected || document.querySelector(".comments.comments--single-thread")) return;
+      if (clicks === 0 && misses === 0) {
+        if (limits.has(limit) || pendingLimits.has(limit)) return;
+        pendingLimits.add(limit);
+      }
+      const button = clicks < 4 && limit.querySelector(".link-button.link-button--default.comments-limit__expand");
+      if (button) { clicks++; button.click(); }
+      else if (clicks >= 4 || misses >= 3) { pendingLimits.delete(limit); limits.add(limit); return; }
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        if (!get("expandComments", true)) { pendingLimits.delete(limit); limits.delete(limit); return; }
+        if (clicks >= 4) { pendingLimits.delete(limit); limits.add(limit); return; }
+        expandLimit(limit, clicks, button ? 0 : misses + 1);
+      }, 800);
+      timers.add(timer);
+    };
+    const collapseHidden = (comment, attempt = 0) => {
+      if (!get("skipHiddenComments", true) || !comment.isConnected) return;
+      const button = comment.querySelector(branchSelector);
+      if (button?.textContent.includes("Свернуть")) button.click();
+      else if (attempt < 3) {
+        const timer = setTimeout(() => { timers.delete(timer); collapseHidden(comment, attempt + 1); }, 500);
+        timers.add(timer);
+      }
+    };
+    const drain = async () => {
+      if (pumping) return;
+      pumping = true;
+      while (get("expandComments", true) && queue.size) {
+        if (document.querySelector(".popover, .notifications-popover.bell__popover, .account-button__menu")) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          continue;
+        }
+        const button = [...queue].find((item) => item.isConnected);
+        if (!button) { queue.clear(); break; }
+        queue.delete(button);
+        if (!button.textContent.includes("Свернуть") && button.dataset.expanded !== "true" && !(get("skipHiddenComments", true) && button.closest(hiddenSelector))) {
+          button.dataset.expanded = "true";
+          button.click();
+          await new Promise((resolve) => setTimeout(resolve, 150));
+        }
+      }
+      pumping = false;
+    };
+    const scan = (root, refresh = false) => {
+      if (!get("expandComments", true)) return;
+      const limitSelector = ".comments-limit.comments-limit--bottom";
+      const limitsInRoot = [...(root.matches?.(limitSelector) ? [root] : []), ...(root.querySelectorAll?.(limitSelector) || [])];
+      const addedButton = root.matches?.(".comments-limit__expand") ? root : root.querySelector?.(".comments-limit__expand");
+      const limitForAddedButton = addedButton?.closest(limitSelector);
+      if (limitForAddedButton) limitsInRoot.push(limitForAddedButton);
+      for (const limit of limitsInRoot) {
+        if (!pendingLimits.has(limit) && (refresh || limit === limitForAddedButton)) limits.delete(limit);
+        expandLimit(limit);
+      }
+      if (get("expandAllBranches", false)) {
+        if (root.matches?.(branchSelector)) queue.add(root);
+        root.querySelectorAll?.(branchSelector).forEach((button) => queue.add(button));
+        void drain();
+      }
+      if (get("skipHiddenComments", true)) {
+        if (root.matches?.(hiddenSelector)) collapseHidden(root);
+        root.querySelectorAll?.(hiddenSelector).forEach((comment) => collapseHidden(comment));
+      }
+    };
+    scan(document);
+    const observer = new MutationObserver((records) => records.forEach(({ addedNodes }) => addedNodes.forEach((node) => {
+      if (node.nodeType === Node.ELEMENT_NODE) scan(node);
+    })));
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    if (document.readyState === "complete") setTimeout(() => scan(document, true), 0);
+    else page.addEventListener("load", () => scan(document, true), { once: true });
+    return () => scan(document, true);
+  };
+  let refreshCommentExpansion;
+  let refreshCommentMedia;
+  const initCommentFeatures = () => {
+    const edits = new Map();
+    const processed = new WeakSet();
+    const audioByComment = new Map();
+    const editApi = "https://api.dtfrandomizer.xyz/api/comments/post/";
+    const requestJson = (url) => new Promise((resolve) => GM_xmlhttpRequest({
+      method: "GET", url, onload: (response) => { try { resolve(JSON.parse(response.responseText)); } catch { resolve(null); } }, onerror: () => resolve(null),
+    }));
+    const postId = () => Number(location.pathname.match(/\/[^/]+\/(\d+)(?:-|\/|$)/)?.[1]) || null;
+    const showDialog = (title, content) => {
+      const overlay = document.createElement("div");
+      overlay.className = "dtf-vm-comment-overlay";
+      const dialog = document.createElement("section");
+      dialog.className = "dtf-vm-comment-dialog";
+      const heading = document.createElement("header");
+      heading.textContent = title;
+      const close = document.createElement("button");
+      close.type = "button"; close.textContent = "×"; close.setAttribute("aria-label", "Закрыть");
+      close.onclick = () => overlay.remove();
+      heading.append(close); dialog.append(heading, content); overlay.append(dialog);
+      overlay.onclick = (event) => { if (event.target === overlay) overlay.remove(); };
+      document.body.append(overlay);
+    };
+    const removedCommentsEnabled = () => get("showRemovedComments", true);
+    const displayEdits = (comment, data) => {
+      if (!removedCommentsEnabled() || !get("showCommentEdits", true) || processed.has(comment)) return;
+      const versions = data && [data.original, ...(data.edits || []).slice(0, -1)].filter(Boolean);
+      const footer = comment.querySelector(".comment-footer");
+      if (!versions?.length || !footer) return;
+      processed.add(comment);
+      const button = document.createElement("button");
+      button.className = "link-button link-button--small dtf-vm-edits";
+      button.type = "button"; button.textContent = `Изменения (${versions.length})`;
+      button.onclick = (event) => {
+        event.stopPropagation();
+        const list = document.createElement("div");
+        for (const version of versions) {
+          const item = document.createElement("article");
+          item.textContent = typeof version?.data?.text === "string" ? version.data.text : typeof version?.text === "string" ? version.text : "";
+          list.append(item);
+        }
+        showDialog("История изменений", list);
+      };
+      footer.append(button);
+    };
+    const fetchEdits = async (id) => {
+      if (!removedCommentsEnabled() || !get("showCommentEdits", true) || edits.has(id)) return;
+      edits.set(id, null);
+      const data = await requestJson(`${editApi}${id}/edits`);
+      if (data?.status === "ok" && data.data && typeof data.data === "object") {
+        for (const [key, value] of Object.entries(data.data)) edits.set(key, value);
+        document.querySelectorAll(".comment[data-id]").forEach((comment) => displayEdits(comment, edits.get(comment.dataset.id)));
+      }
+    };
+    const handleComment = (comment) => {
+      if (removedCommentsEnabled() && get("showCommentEdits", true)) {
+        const id = comment.dataset.id;
+        if (id && edits.has(id)) displayEdits(comment, edits.get(id));
+        else if (id) void fetchEdits(postId());
+      }
+    };
+    const noCommentReasons = new Map();
+    const applyNoComment = (icon) => {
+      const counter = icon.closest(".comments-counter");
+      const id = counter?.getAttribute("href")?.match(/\/(\d+)(?:[-/?#]|$)/)?.[1];
+      if (!id || !noCommentReasons.has(id)) return;
+      const reason = noCommentReasons.get(id);
+      const previous = icon.previousElementSibling;
+      if (reason) {
+        icon.classList.add("dtf-vm-nocomment-hidden");
+        if (!previous?.classList.contains("dtf-vm-nocomment")) {
+          const badge = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          badge.classList.add("dtf-vm-nocomment"); badge.setAttribute("viewBox", "0 0 20 20"); badge.setAttribute("width", "20"); badge.setAttribute("height", "20"); badge.setAttribute("fill", "none");
+          badge.innerHTML = '<path d="M15.815 9.78c0-3.402-2.716-5.614-6.035-5.614s-6.03 2.21-6.03 5.613 2.712 5.614 6.03 5.614c1.017 0 1.639-.054 2.4-.357.61-.242 1.29-.194 1.82-.016l2.163.72-.729-2.185-.005-.024c-.14-.518-.206-1.28.02-1.908.236-.663.366-.953.366-1.844m.681 6.072h.002l-.008-.002zm.986-6.073c0 1.19-.213 1.703-.465 2.406-.068.191-.069.569.015.894l.831 2.49.007.024c.163.603-.115 1.141-.427 1.45-.306.305-.86.594-1.473.389l-2.498-.831c-.253-.085-.516-.08-.676-.016-1.055.42-1.928.476-3.016.476-4.052 0-7.696-2.781-7.696-7.28S5.728 2.5 9.78 2.5c4.05 0 7.702 2.78 7.702 7.28" fill="#f44336"></path><line x1="3.5" y1="16.5" x2="16.5" y2="3.5" stroke="#f44336" stroke-width="1.8" stroke-linecap="round"/>';
+          icon.before(badge);
+        }
+        counter.title = reason;
+      } else {
+        icon.classList.remove("dtf-vm-nocomment-hidden");
+        previous?.classList.contains("dtf-vm-nocomment") && previous.remove();
+        counter.removeAttribute("title");
+      }
+    };
+    const updateNoComment = (items) => {
+      if (!get("showNoCommentIcon", true)) return;
+      for (const item of items || []) {
+        const data = item?.data;
+        const editor = data?.commentEditor;
+        if (data?.id && editor) noCommentReasons.set(String(data.id), editor.enabled === false ? editor.text || "Комментирование недоступно" : "");
+      }
+      document.querySelectorAll(".content.content--short .comments-counter .icon--comment").forEach(applyNoComment);
+    };
+    const onCommentResponse = ({ url, items }) => {
+      if (/\/comments(?:\?|$)/.test(url)) for (const item of items) {
+        const media = item?.media?.[0]?.data;
+        if (item?.id != null && media) audioByComment.set(String(item.id), media.has_audio ? "1" : "0");
+      }
+      if (/\/(?:feed|recommendations|timeline)/.test(url)) updateNoComment(items);
+      enhance();
+    };
+    const hiddenFetched = new Set();
+    const hiddenInProgress = new Set();
+    const loadHiddenComments = async () => {
+      if (!removedCommentsEnabled() || !get("showHiddenComments", true)) return;
+      const id = postId();
+      const dropdown = document.querySelector(".comments-header .dropdown");
+      if (!id || !dropdown || hiddenFetched.has(id) || hiddenInProgress.has(id)) return;
+      hiddenInProgress.add(id);
+      try {
+        const [visibleResponse, idsResponse] = await Promise.all([
+          page.fetch(`https://api.dtf.ru/v2.10/comments?sorting=date&contentId=${id}&firstLoad=false`).then((response) => response.json()),
+          requestJson(`${editApi}${id}/ids`),
+        ]);
+        const visible = visibleResponse?.result?.items || [];
+        const visibleById = new Map(visible.map((comment) => [String(comment.id), comment]));
+        const childrenByParent = new Map();
+        for (const comment of visible) {
+          const parentId = String(comment.replyTo);
+          if (parentId === "0") continue;
+          if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+          childrenByParent.get(parentId).push(String(comment.id));
+        }
+        const hidden = (comment) => comment.isRemoved || Number(comment.author?.id) === -1;
+        const hasVisibleDescendantCache = new Map();
+        const hasVisibleDescendant = (commentId) => {
+          const cached = hasVisibleDescendantCache.get(commentId);
+          if (typeof cached === "boolean") return cached;
+          if (cached === "visiting") return false;
+          const comment = visibleById.get(commentId);
+          if (!comment) { hasVisibleDescendantCache.set(commentId, false); return false; }
+          if (!hidden(comment)) { hasVisibleDescendantCache.set(commentId, true); return true; }
+          hasVisibleDescendantCache.set(commentId, "visiting");
+          const found = (childrenByParent.get(commentId) || []).some(hasVisibleDescendant);
+          hasVisibleDescendantCache.set(commentId, found);
+          return found;
+        };
+        const removed = visible.filter((comment) => hidden(comment) && !hasVisibleDescendant(String(comment.id)));
+        const hiddenIds = [...new Set([...removed.map((comment) => String(comment.id)), ...(idsResponse?.data || []).map(String).filter((commentId) => !visibleById.has(commentId))])];
+        if (!hiddenIds.length) { hiddenFetched.add(id); return; }
+        const details = await Promise.all(hiddenIds.map((commentId) => requestJson(`${editApi.replace("/post/", "/")}${commentId}`)));
+        const comments = details.map((detail) => detail?.data).filter((comment) => comment?.data?.user);
+        if (!comments.length) { hiddenFetched.add(id); return; }
+        comments.sort((a, b) => a.data.date - b.data.date);
+        const byId = new Map(comments.map((comment) => [String(comment.id), comment]));
+        const replyId = (comment) => String(comment.replyTo ?? visibleById.get(String(comment.id))?.replyTo ?? 0);
+        const replyIds = [...new Set(comments.map(replyId).filter((reply) => reply !== "0" && !byId.has(reply)))];
+        const parents = await Promise.all(replyIds.map((reply) => requestJson(`${editApi.replace("/post/", "/")}${reply}`)));
+        parents.forEach((parent) => { if (parent?.data?.id) byId.set(String(parent.data.id), parent.data); });
+        hiddenFetched.add(id);
+        const button = document.createElement("button");
+        button.className = "link-button link-button--small dtf-vm-hidden-comments";
+        button.title = `Скрытые комментарии (${comments.length})`; button.textContent = `◉ ${comments.length}`;
+        button.onclick = () => {
+          const list = document.createElement("div");
+          comments.forEach((comment) => {
+            const { data } = comment;
+            const row = document.createElement("article"); row.className = "dtf-vm-comment-row";
+            const meta = document.createElement("div"); meta.className = "dtf-vm-comment-meta";
+            const addUser = (user) => {
+              if (!user) return;
+              const link = document.createElement("a"); link.className = "dtf-vm-comment-author"; link.href = `/id${user.id}`;
+              if (user.avatar) { const avatar = document.createElement("img"); avatar.src = `https://leonardo.osnova.io/${user.avatar}/-/scale_crop/36x36/`; avatar.alt = ""; link.append(avatar); }
+              const name = document.createElement("span"); name.textContent = user.name || ""; link.append(name); meta.append(link);
+            };
+            addUser(data.user);
+            const parent = byId.get(replyId(comment));
+            if (parent?.data?.user) { const arrow = document.createElement("span"); arrow.className = "dtf-vm-comment-reply"; arrow.textContent = "→"; meta.append(arrow); addUser(parent.data.user); }
+            const time = document.createElement("time"); time.className = "dtf-vm-comment-date"; time.textContent = new Date(data.date * 1000).toLocaleString("ru-RU"); meta.append(time);
+            row.append(meta);
+            const text = document.createElement("div"); text.className = "dtf-vm-comment-text"; text.textContent = data.text || ""; row.append(text);
+            for (const media of data.media || []) {
+              const item = media.data || media;
+              if (!item.uuid) continue;
+              const container = document.createElement("div"); container.className = "dtf-vm-comment-media";
+              const width = Number(item.width) > 0 ? Number(item.width) : 400;
+              const height = Number(item.height) > 0 ? Number(item.height) : 300;
+              container.style.aspectRatio = `${width} / ${height}`;
+              container.style.maxWidth = `${Math.min(width, 400, Math.round(300 * width / height))}px`;
+              if (media.type === "movie" || item.isVideo) {
+                const video = document.createElement("video"); video.src = `https://leonardo.osnova.io/${item.uuid}/-/format/mp4/#t=0.1`; video.playsInline = true;
+                if (item.has_audio) video.controls = true; else { video.muted = true; video.loop = true; video.autoplay = true; }
+                container.append(video);
+              } else {
+                const image = document.createElement("img"); image.src = `https://leonardo.osnova.io/${item.uuid}/-/format/webp/`; image.alt = ""; image.loading = "lazy"; container.append(image);
+              }
+              row.append(container);
+            }
+            list.append(row);
+          });
+          showDialog(`Скрытые комментарии (${comments.length})`, list);
+        };
+        dropdown.after(button);
+      } catch (error) { console.warn("DTF: could not load hidden comments", error); }
+      finally { hiddenInProgress.delete(id); }
+    };
+    const restoringRemoved = new Set();
+    const restoredRemoved = new WeakSet();
+    const restoreRemovedComment = (placeholder) => {
+      if (!removedCommentsEnabled()) return;
+      const comment = placeholder.closest(".comment--hidden[data-id]");
+      const id = comment?.dataset.id;
+      const content = comment?.querySelector(".comment__content");
+      const hidden = comment?.querySelector(".comment-hidden");
+      const icon = comment?.querySelector(".comment__avatar--icon");
+      if (!id || !content || !hidden || !icon || restoredRemoved.has(comment) || restoringRemoved.has(id)) return;
+      restoringRemoved.add(id);
+      void requestJson(`${editApi.replace("/post/", "/")}${id}`).then((response) => {
+        const data = response?.data?.data;
+        const user = data?.user;
+        if (response?.status !== "ok" || !user || !removedCommentsEnabled()) return;
+        const profile = `/id${user.id}`;
+        const author = document.createElement("div"); author.className = "author"; author.style.setProperty("--v41cb4c68", "36px");
+        const avatarLink = document.createElement("a"); avatarLink.className = "author__avatar"; avatarLink.href = profile;
+        if (user.avatar) {
+          const avatar = document.createElement("img"); avatar.src = `https://leonardo.osnova.io/${user.avatar}/-/scale_crop/36x36/`; avatar.width = 36; avatar.height = 36; avatar.alt = ""; avatar.loading = "lazy";
+          avatar.style.cssText = "border-radius: 50%; object-fit: cover;"; avatarLink.append(avatar);
+        }
+        const main = document.createElement("div"); main.className = "author__main";
+        const name = document.createElement("a"); name.className = "author__name"; name.href = profile; name.textContent = user.name || "";
+        const removedLabel = document.createElement("div"); removedLabel.textContent = "(комментарий удалён)"; removedLabel.style.cssText = "color: red; order: 4; margin-left: 4px;";
+        main.append(name, removedLabel);
+        const details = document.createElement("div"); details.className = "author__details";
+        const date = new Date(data.date * 1000); const time = document.createElement("time");
+        time.title = date.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        time.dateTime = date.toISOString(); time.textContent = date.toLocaleDateString("ru-RU"); details.append(time);
+        author.append(avatarLink, main, details);
+        const text = document.createElement("div"); text.className = "comment-text"; text.style.whiteSpace = "pre-wrap"; text.textContent = data.text || "";
+        icon.replaceWith(author); hidden.replaceWith(text); content.style.borderRight = "3px solid red";
+        for (const media of data.media || []) {
+          const item = media.data || media;
+          if (!item.uuid) continue;
+          const width = Number(item.width) > 0 ? Number(item.width) : 400;
+          const height = Number(item.height) > 0 ? Number(item.height) : 300;
+          const maxWidth = Math.min(width, 400, Math.round(300 * width / height));
+          const isVideo = media.type === "movie" || (media.type === "image" && item.isVideo);
+          const frame = document.createElement("div");
+          frame.className = `andropov-media andropov-media--rounded andropov-media--bordered andropov-media--has-preview ${isVideo ? "andropov-video" : "andropov-image andropov-image--zoom"}`;
+          frame.style.cssText = `aspect-ratio: ${width} / ${height}; max-width: ${maxWidth}px;`;
+          if (/^[\da-f]{6}$/i.test(item.color || "")) frame.style.setProperty("--background-color", `#${item.color}`);
+          if (isVideo) {
+            frame.dataset.loaded = "true";
+            const player = document.createElement("div"); player.className = `andropov-video-player${item.has_audio ? " andropov-video-player--with-controls" : ""}`;
+            const video = document.createElement("video"); video.preload = "metadata"; video.playsInline = true;
+            if (item.has_audio) video.controls = true; else { video.muted = true; video.loop = true; video.autoplay = true; }
+            video.src = `https://leonardo.osnova.io/${item.uuid}/-/format/mp4/#t=0.1`;
+            const overlay = document.createElement("div"); overlay.className = "andropov-video-player__overlay"; player.append(video, overlay); frame.append(player);
+          } else {
+            const base = `https://leonardo.osnova.io/${item.uuid}`; const small = `${base}/-/scale_crop/${maxWidth}x/`; const large = `${base}/-/scale_crop/${2 * maxWidth}x/`;
+            const picture = document.createElement("picture"); const source = document.createElement("source"); source.type = "image/webp"; source.srcset = `${small}-/format/webp/, ${large}-/format/webp/ 2x`;
+            const image = document.createElement("img"); image.src = small; image.srcset = `${small}, ${large} 2x`; image.alt = ""; image.loading = "lazy"; picture.append(source, image); frame.append(picture);
+          }
+          const mediaElement = document.createElement("div"); mediaElement.className = "comment-media"; mediaElement.append(frame); text.after(mediaElement);
+        }
+        restoredRemoved.add(comment);
+      }).finally(() => restoringRemoved.delete(id));
+    };
+    document.documentElement.classList.toggle("dtf-vm-show-removed-comments", Boolean(get("showRemovedComments", true)));
+    const enhance = (root = document) => {
+      const queryAll = (selector) => [...(root.matches?.(selector) ? [root] : []), ...(root.querySelectorAll?.(selector) || [])];
+      queryAll(".comment[data-id]").forEach(handleComment);
+      if (get("showNoCommentIcon", true)) queryAll(".content.content--short .comments-counter .icon--comment").forEach(applyNoComment);
+      if (get("showRemovedComments", true)) queryAll(".comment-hidden__text").forEach(restoreRemovedComment);
+      if (get("showHiddenComments", true)) void loadHiddenComments();
+      if (get("hideCommentMedia", false)) queryAll(".comment-media").forEach((media) => {
+        if (media.hasAttribute("data-dtf-vm-hidden")) return;
+        const commentId = media.closest(".comment[data-id]")?.dataset.id;
+        const audio = audioByComment.get(String(commentId));
+        const videoMedia = media.querySelector(":scope > .andropov-video");
+        const gif = Boolean(videoMedia && (audio === "0" || (!audio && videoMedia.matches('[data-loaded="true"]:not(:has(.andropov-video-player--with-controls))'))));
+        const externalVideo = media.querySelector(":scope > .andropov-external-video");
+        const image = !videoMedia && !externalVideo && media.querySelector(".andropov-image, img, picture");
+        const video = !gif && (audio === "1" || media.querySelector(":scope > .andropov-external-video, .andropov-video-player--with-controls"));
+        if (!(get("hideCommentGifs", false) && gif) && !(get("hideCommentImages", false) && image) && !(get("hideCommentVideos", false) && video)) return;
+        media.setAttribute("data-dtf-vm-hidden", "");
+        if (get("showMediaRestore", true)) media.setAttribute("data-dtf-vm-restore", "1");
+        media.dataset.dtfVmLabel = gif ? "Показать гифку" : image ? "Показать изображение" : "Показать видео";
+      });
+    };
+    refreshCommentMedia = () => {
+      document.querySelectorAll(".comment-media").forEach((media) => {
+        media.removeAttribute("data-dtf-vm-hidden");
+        media.removeAttribute("data-dtf-vm-restore");
+        delete media.dataset.dtfVmLabel;
+      });
+      enhance();
+    };
+    commentFeedListeners.add(onCommentResponse);
+    recentCommentResponses.forEach(onCommentResponse);
+    const observer = new MutationObserver((records) => records.forEach(({ addedNodes }) => addedNodes.forEach((node) => { if (node.nodeType === Node.ELEMENT_NODE) enhance(node); })));
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener("click", (event) => {
+      const media = event.target.closest?.('[data-dtf-vm-hidden][data-dtf-vm-restore="1"]');
+      if (!media) return;
+      event.preventDefault(); event.stopPropagation(); media.removeAttribute("data-dtf-vm-hidden"); media.removeAttribute("data-dtf-vm-restore");
+    }, true);
+    let quoteButton;
+    let quoteTimer;
+    const removeQuoteButton = () => { quoteButton?.remove(); quoteButton = null; };
+    const updateQuoteButton = () => {
+      if (!get("enableCommentQuote", true)) return removeQuoteButton();
+      const editor = document.querySelector(".contenteditable__input");
+      const selection = page.getSelection();
+      if (!editor || !selection?.rangeCount || selection.isCollapsed) return removeQuoteButton();
+      const range = selection.getRangeAt(0);
+      if (editor.contains(range.commonAncestorContainer) || document.querySelector(".editor__content")?.contains(range.commonAncestorContainer)) return removeQuoteButton();
+      const text = selection.toString().trim();
+      if (!text) return removeQuoteButton();
+      const rect = range.getBoundingClientRect();
+      removeQuoteButton();
+      quoteButton = document.createElement("button");
+      quoteButton.className = "dtf-vm-quote"; quoteButton.type = "button"; quoteButton.textContent = "Цитировать";
+      quoteButton.style.top = `${rect.bottom + page.scrollY + 5}px`;
+      quoteButton.style.left = `${rect.left + page.scrollX + rect.width / 2}px`;
+      quoteButton.onclick = () => {
+        editor.innerText = `${editor.innerText ? `${editor.innerText.trimEnd()}\n` : ""}>${text}\n\n`;
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+        removeQuoteButton();
+        if (get("quoteMoveTo", false)) {
+          quoteButton = document.createElement("button"); quoteButton.className = "dtf-vm-quote"; quoteButton.type = "button"; quoteButton.textContent = "Перейти";
+          quoteButton.onclick = () => {
+            editor.scrollIntoView({ behavior: "smooth", block: "center" }); editor.focus();
+            const range = document.createRange(); range.selectNodeContents(editor); range.collapse(false);
+            const selection = page.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+            removeQuoteButton();
+          };
+          document.body.append(quoteButton);
+        } else selection.removeAllRanges();
+      };
+      document.body.append(quoteButton);
+    };
+    const scheduleQuote = () => { clearTimeout(quoteTimer); quoteTimer = setTimeout(updateQuoteButton, 100); };
+    document.addEventListener("selectionchange", scheduleQuote);
+    document.addEventListener("keyup", scheduleQuote);
+    document.addEventListener("mousedown", (event) => { if (quoteButton && !quoteButton.contains(event.target)) removeQuoteButton(); });
+    if (get("showCommentEdits", true)) { const id = postId(); if (id) void fetchEdits(id); }
+    enhance();
+    return () => { observer.disconnect(); commentFeedListeners.delete(onCommentResponse); document.removeEventListener("selectionchange", scheduleQuote); document.removeEventListener("keyup", scheduleQuote); removeQuoteButton(); clearTimeout(quoteTimer); };
+  };
+  let stopCommentFeatures;
+
   const initialize = () => {
+    stopCommentFeatures = initCommentFeatures();
+    refreshCommentExpansion = expandComments();
     const topButton = document.createElement("button");
     topButton.className = "dtf-vm-top";
     topButton.type = "button";
@@ -1386,12 +1879,12 @@
       );
       const overlay = document.createElement("div");
       overlay.className = "dtf-vm-overlay";
-      overlay.innerHTML = `<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-title">Настройки DTF</h2><div class="dtf-vm-settings-grid"><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Лента и изображения</h3><label>Ширина ленты: <output>${width}%</output><input name="width" type="range" min="50" max="100" step="5" value="${width}"></label><label><input name="centered" type="checkbox" ${get("centered", false) ? "checked" : ""}> Центрировать изображения</label><label><input name="quality" type="checkbox" ${get("quality", false) ? "checked" : ""}> Повысить качество</label><label><input name="pauseVideosOnScroll" type="checkbox" ${get("pauseVideosOnScroll", false) ? "checked" : ""}> Пауза при скролле<small class="dtf-vm-hint">Ставит видео на паузу, когда оно выходит из области видимости.</small></label><label><input name="pauseVideosByDefault" type="checkbox" ${get("pauseVideosByDefault", false) ? "checked" : ""}> Пауза по умолчанию<small class="dtf-vm-hint">Ставит новые видео на паузу, чтобы они не запускались сами.</small></label><label class="dtf-vm-dependent"><input name="stretchRight" type="checkbox" ${get("stretchRight", false) ? "checked" : ""}> Растянуть вправо<small class="dtf-vm-hint">Использовать место скрытой правой панели.</small></label><label><input name="hideViewedPosts" type="checkbox" ${get("hideViewedPosts", false) ? "checked" : ""}> Скрывать просмотренное<small class="dtf-vm-hint">Автоматически сворачивать просмотренные посты.</small></label><label class="dtf-vm-subsetting"><input name="showHideButton" type="checkbox" ${get("showHideButton", false) ? "checked" : ""}> Кнопки управления<small class="dtf-vm-hint">Добавить кнопки показать/скрыть на посты.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Интерфейс</h3><label><input name="headerWidth" type="checkbox" ${get("headerWidth", false) ? "checked" : ""}> Подогнать шапку под ширину ленты</label><label><input name="plainHeaderSearch" type="checkbox" ${get("plainHeaderSearch", false) ? "checked" : ""}> Лупа без звёздочки</label><label><input name="backToTop" type="checkbox" ${get("backToTop", false) ? "checked" : ""}> Кнопка «Наверх»</label><label><input name="smallFixes" type="checkbox" ${get("smallFixes", false) ? "checked" : ""}> Улучшения интерфейса<small class="dtf-vm-hint">Добавляет темы и меняет поле комментария.</small></label></div><div class="dtf-vm-section"><h3>Правая панель</h3><label><input name="hideRightSidebar" type="checkbox" ${get("hideRightSidebar", false) ? "checked" : ""}> Скрыть «Популярные комментарии»</label><label class="dtf-vm-dependent"><input name="livePanel" type="checkbox" ${get("livePanel", false) ? "checked" : ""}> Live-панель<small class="dtf-vm-hint">Показывает ленту с последними комментариями.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Темы</h3><label><input name="topicSearchEnabled" type="checkbox" ${get("topicSearchEnabled", false) ? "checked" : ""}> Поиск по темам</label><label><input name="onlySubscribedTopics" type="checkbox" ${get("onlySubscribedTopics", false) ? "checked" : ""}> Показывать только темы из моих подписок</label><label>Тем до «Показать все»: <output>${topicLimit}</output><input name="topicLimit" type="range" min="5" max="${topicLimitMax}" step="1" value="${topicLimit}"></label><label><input name="sortTopics" type="checkbox" ${get("sortTopics", false) ? "checked" : ""}> Сортировать темы: EN, затем RU</label><label><input name="reorderTopics" type="checkbox" ${get("reorderTopics", false) ? "checked" : ""}> Менять порядок тем<small class="dtf-vm-hint">Перетаскивайте темы в списке слева.</small></label><button class="dtf-vm-reset-topics" type="button">Сбросить сохранённый порядок</button></div><div class="dtf-vm-section"><h3>Разное</h3><label><input name="hidePlusAds" type="checkbox" ${get("hidePlusAds", false) ? "checked" : ""}> Скрывать рекламу<small class="dtf-vm-hint">Скрывает рекламные баннеры, промо и виджеты оплаты.</small></label><label><input name="plusFeatures" type="checkbox" ${get("plusFeatures", false) ? "checked" : ""}> Функции Plus<small class="dtf-vm-hint">ЛС, история GIF и скрытые комментарии. Серверные функции не гарантированы.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Левая панель</h3><label><input name="hidePopular" type="checkbox" ${get("hidePopular", false) ? "checked" : ""}> Скрыть «Популярное»</label><label><input name="hideNew" type="checkbox" ${get("hideNew", false) ? "checked" : ""}> Скрыть «Свежее»</label><label><input name="hideMy" type="checkbox" ${get("hideMy", false) ? "checked" : ""}> Скрыть «Моя лента»</label><label><input name="hideMessages" type="checkbox" ${get("hideMessages", false) ? "checked" : ""}> Скрыть «Сообщения»</label><label><input name="hideRating" type="checkbox" ${get("hideRating", false) ? "checked" : ""}> Скрыть «Рейтинг»</label><label><input name="hideGames" type="checkbox" ${get("hideGames", false) ? "checked" : ""}> Скрыть раздел «Игры»</label><label><input name="hideTopics" type="checkbox" ${get("hideTopics", false) ? "checked" : ""}> Скрыть раздел «Темы»</label><label><input name="hideFooter" type="checkbox" ${get("hideFooter", false) ? "checked" : ""}> Скрыть нижний блок меню DTF</label></div></div></div></section>`;
+      overlay.innerHTML = `<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-title">Настройки DTF</h2><div class="dtf-vm-settings-grid"><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Лента и изображения</h3><label>Ширина ленты: <output>${width}%</output><input name="width" type="range" min="50" max="100" step="5" value="${width}"></label><label><input name="centered" type="checkbox" ${get("centered", false) ? "checked" : ""}> Центрировать изображения</label><label><input name="quality" type="checkbox" ${get("quality", false) ? "checked" : ""}> Повысить качество</label><label><input name="pauseVideosOnScroll" type="checkbox" ${get("pauseVideosOnScroll", false) ? "checked" : ""}> Пауза при скролле<small class="dtf-vm-hint">Ставит видео на паузу, когда оно выходит из области видимости.</small></label><label><input name="pauseVideosByDefault" type="checkbox" ${get("pauseVideosByDefault", false) ? "checked" : ""}> Пауза по умолчанию<small class="dtf-vm-hint">Ставит новые видео на паузу, чтобы они не запускались сами.</small></label><label class="dtf-vm-dependent"><input name="stretchRight" type="checkbox" ${get("stretchRight", false) ? "checked" : ""}> Растянуть вправо<small class="dtf-vm-hint">Использовать место скрытой правой панели.</small></label><label><input name="hideViewedPosts" type="checkbox" ${get("hideViewedPosts", false) ? "checked" : ""}> Скрывать просмотренное<small class="dtf-vm-hint">Автоматически сворачивать просмотренные посты.</small></label><label class="dtf-vm-subsetting"><input name="showHideButton" type="checkbox" ${get("showHideButton", false) ? "checked" : ""}> Кнопки управления<small class="dtf-vm-hint">Добавить кнопки показать/скрыть на посты.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Шапка</h3><label><input name="headerWidth" type="checkbox" ${get("headerWidth", false) ? "checked" : ""}> Подогнать шапку под ширину ленты</label><label><input name="plainHeaderSearch" type="checkbox" ${get("plainHeaderSearch", false) ? "checked" : ""}> Лупа без звёздочки</label><label><input name="hideDonationsMenu" type="checkbox" ${get("hideDonationsMenu", false) ? "checked" : ""}> Скрыть «Донаты» в меню профиля</label><label><input name="hidePlusMenu" type="checkbox" ${get("hidePlusMenu", false) ? "checked" : ""}> Скрыть «Подписка Plus» в меню профиля</label></div><div class="dtf-vm-section"><h3>Интерфейс</h3><label><input name="backToTop" type="checkbox" ${get("backToTop", false) ? "checked" : ""}> Кнопка «Наверх»</label><label><input name="smallFixes" type="checkbox" ${get("smallFixes", false) ? "checked" : ""}> Улучшения интерфейса<small class="dtf-vm-hint">Добавляет темы и меняет поле комментария.</small></label></div><div class="dtf-vm-section"><h3>Комментарии</h3><label><input name="expandComments" type="checkbox" ${get("expandComments", true) ? "checked" : ""}> Раскрывать комментарии<small class="dtf-vm-hint">Автоматически раскрывает свернутый список комментариев.</small></label><label class="dtf-vm-subsetting"><input name="expandAllBranches" type="checkbox" ${get("expandAllBranches", false) ? "checked" : ""}> Раскрывать ответы<small class="dtf-vm-hint">Автоматически раскрывает ответы во всех ветках. На длинных обсуждениях может замедлить страницу.</small></label><label class="dtf-vm-subsetting"><input name="skipHiddenComments" type="checkbox" ${get("skipHiddenComments", true) ? "checked" : ""}> Не раскрывать скрытые комментарии</label><label><input name="showRemovedComments" type="checkbox" ${get("showRemovedComments", true) ? "checked" : ""}> Показывать удалённые комментарии</label><label class="dtf-vm-subsetting"><input name="showCommentEdits" type="checkbox" ${get("showCommentEdits", true) ? "checked" : ""}> Показывать историю изменений</label><label class="dtf-vm-subsetting"><input name="showHiddenComments" type="checkbox" ${get("showHiddenComments", true) ? "checked" : ""}> Показывать комментарии, скрытые модерацией</label><label><input name="hideCommentMedia" type="checkbox" ${get("hideCommentMedia", false) ? "checked" : ""}> Скрывать вложения</label><label class="dtf-vm-subsetting"><input name="hideCommentGifs" type="checkbox" ${get("hideCommentGifs", false) ? "checked" : ""}> Скрывать GIF</label><label class="dtf-vm-subsetting"><input name="hideCommentImages" type="checkbox" ${get("hideCommentImages", false) ? "checked" : ""}> Скрывать изображения</label><label class="dtf-vm-subsetting"><input name="hideCommentVideos" type="checkbox" ${get("hideCommentVideos", false) ? "checked" : ""}> Скрывать видео</label><label class="dtf-vm-subsetting"><input name="showMediaRestore" type="checkbox" ${get("showMediaRestore", true) ? "checked" : ""}> Кнопка «Показать»</label><label><input name="showNoCommentIcon" type="checkbox" ${get("showNoCommentIcon", true) ? "checked" : ""}> Показывать, почему нельзя комментировать</label><label><input name="enableCommentQuote" type="checkbox" ${get("enableCommentQuote", true) ? "checked" : ""}> Добавлять цитату в комментарий</label><label class="dtf-vm-subsetting"><input name="quoteMoveTo" type="checkbox" ${get("quoteMoveTo", false) ? "checked" : ""}> Кнопка перехода к полю комментария</label></div><div class="dtf-vm-section"><h3>Правая панель</h3><label><input name="hideRightSidebar" type="checkbox" ${get("hideRightSidebar", false) ? "checked" : ""}> Скрыть «Популярные комментарии»</label><label class="dtf-vm-dependent"><input name="livePanel" type="checkbox" ${get("livePanel", false) ? "checked" : ""}> Live-панель<small class="dtf-vm-hint">Показывает ленту с последними комментариями.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Темы</h3><label><input name="topicSearchEnabled" type="checkbox" ${get("topicSearchEnabled", false) ? "checked" : ""}> Поиск по темам</label><label><input name="onlySubscribedTopics" type="checkbox" ${get("onlySubscribedTopics", false) ? "checked" : ""}> Показывать только темы из моих подписок</label><label>Тем до «Показать все»: <output>${topicLimit}</output><input name="topicLimit" type="range" min="5" max="${topicLimitMax}" step="1" value="${topicLimit}"></label><label><input name="sortTopics" type="checkbox" ${get("sortTopics", false) ? "checked" : ""}> Сортировать темы: EN, затем RU</label><label><input name="reorderTopics" type="checkbox" ${get("reorderTopics", false) ? "checked" : ""}> Менять порядок тем<small class="dtf-vm-hint">Перетаскивайте темы в списке слева.</small></label><button class="dtf-vm-reset-topics" type="button">Сбросить сохранённый порядок</button></div><div class="dtf-vm-section"><h3>Разное</h3><label><input name="hidePlusAds" type="checkbox" ${get("hidePlusAds", false) ? "checked" : ""}> Скрывать рекламу<small class="dtf-vm-hint">Скрывает рекламные баннеры, промо и виджеты оплаты.</small></label><label><input name="plusFeatures" type="checkbox" ${get("plusFeatures", false) ? "checked" : ""}> Функции Plus<small class="dtf-vm-hint">ЛС, история GIF и скрытые комментарии. Серверные функции не гарантированы.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Левая панель</h3><label><input name="hidePopular" type="checkbox" ${get("hidePopular", false) ? "checked" : ""}> Скрыть «Популярное»</label><label><input name="hideNew" type="checkbox" ${get("hideNew", false) ? "checked" : ""}> Скрыть «Свежее»</label><label><input name="hideMy" type="checkbox" ${get("hideMy", false) ? "checked" : ""}> Скрыть «Моя лента»</label><label><input name="hideMessages" type="checkbox" ${get("hideMessages", false) ? "checked" : ""}> Скрыть «Сообщения»</label><label><input name="hideRating" type="checkbox" ${get("hideRating", false) ? "checked" : ""}> Скрыть «Рейтинг»</label><label><input name="hideGames" type="checkbox" ${get("hideGames", false) ? "checked" : ""}> Скрыть раздел «Игры»</label><label><input name="hideTopics" type="checkbox" ${get("hideTopics", false) ? "checked" : ""}> Скрыть раздел «Темы»</label><label><input name="hideFooter" type="checkbox" ${get("hideFooter", false) ? "checked" : ""}> Скрыть нижний блок меню DTF</label></div></div></div></section>`;
       const columns = overlay.querySelectorAll(".dtf-vm-settings-column");
       const sections = [...overlay.querySelectorAll(".dtf-vm-settings-column > .dtf-vm-section")];
-      columns[0].replaceChildren(sections[0], sections[4]);
-      columns[1].replaceChildren(sections[3], sections[1]);
-      columns[2].replaceChildren(sections[2], sections[5]);
+      columns[0].replaceChildren(sections[0], sections[1], sections[4]);
+      columns[1].replaceChildren(sections[2], sections[3]);
+      columns[2].replaceChildren(sections[5], sections[6], sections[7]);
       columns[3].remove();
       const personalization = document.createElement("div");
       personalization.className = "dtf-vm-section dtf-vm-personalization";
@@ -1488,6 +1981,23 @@
         document.querySelector(".dtf-vm-topic-extras")?.remove();
         renderTopics();
       };
+      const dependencies = {
+        expandComments: ["expandAllBranches", "skipHiddenComments"],
+        showRemovedComments: ["showCommentEdits", "showHiddenComments"],
+        hideCommentMedia: ["hideCommentGifs", "hideCommentImages", "hideCommentVideos", "showMediaRestore"],
+        enableCommentQuote: ["quoteMoveTo"],
+      };
+      const syncDependencies = () => {
+        for (const [parent, children] of Object.entries(dependencies)) {
+          const enabled = overlay.querySelector(`[name=${parent}]`).checked;
+          for (const name of children) {
+            const input = overlay.querySelector(`[name=${name}]`);
+            input.disabled = !enabled;
+            input.closest("label").classList.toggle("dtf-vm-disabled", !enabled);
+          }
+        }
+      };
+      syncDependencies();
       for (const name of [
         "centered",
         "quality",
@@ -1502,6 +2012,20 @@
         "hideRightSidebar",
         "livePanel",
         "smallFixes",
+        "expandComments",
+        "expandAllBranches",
+        "skipHiddenComments",
+        "showRemovedComments",
+        "showCommentEdits",
+        "showHiddenComments",
+        "hideCommentMedia",
+        "hideCommentGifs",
+        "hideCommentImages",
+        "hideCommentVideos",
+        "showMediaRestore",
+        "showNoCommentIcon",
+        "enableCommentQuote",
+        "quoteMoveTo",
         "onlySubscribedTopics",
         "topicSearchEnabled",
         "sortTopics",
@@ -1516,9 +2040,15 @@
         "hideRating",
         "hideGames",
         "hideTopics",
+        "hideDonationsMenu",
+        "hidePlusMenu",
       ])
         overlay.querySelector(`[name=${name}]`).onchange = (event) => {
           set(name, event.target.checked);
+          syncDependencies();
+          if (["expandComments", "expandAllBranches", "skipHiddenComments"].includes(name)) { refreshCommentExpansion(); return; }
+          if (["hideCommentMedia", "hideCommentGifs", "hideCommentImages", "hideCommentVideos", "showMediaRestore"].includes(name)) { refreshCommentMedia(); return; }
+          if (["showRemovedComments", "showCommentEdits", "showHiddenComments", "showNoCommentIcon", "enableCommentQuote", "quoteMoveTo"].includes(name)) return window.location.reload();
           if (name === "onlySubscribedTopics") topicsExpanded = false;
           if (name === "sortTopics")
             document.querySelector(".dtf-vm-topic-extras")?.remove();
