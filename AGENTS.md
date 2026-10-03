@@ -1,7 +1,21 @@
 # Project rules
 
-- After each change to `dtf.user.js`, increment patch version in `@version` by 1: `0.0.1` → `0.0.2` → `0.0.3`.
-- Before finishing, run `node --check dtf.user.js` and relevant tests.
+## Git
+- Use Conventional Commits: `<type>[optional scope]: <description>`.
+- Work only on local `stable`. Do not create or switch to feature branches.
+- Before changes, check `git status` and preserve existing user changes.
+- Commit changes to `stable` only when requested. Do not pull or push unless requested.
+
+## Userscript
+- After every change to `dtf.user.js`, increment `@version` patch by 1.
 - Avoid unnecessary dependencies.
-- Keep files under `docs/plans/` local; never stage or commit plans. The directory is gitignored, so do not force-add it.
-- For manual browser testing, launch Chromium with a temporary profile and install the repository's `dtf.user.js` in Violentmonkey (userscript manager); verify changes on DTF in that isolated profile.
+
+## Checks
+- Before finishing, run `node --check dtf.user.js` and relevant tests.
+
+## Browser testing
+- Use Chromium with a temporary profile and Violentmonkey.
+- Install repository's `dtf.user.js` and verify changes on DTF.
+
+## Local plans
+- Keep `docs/plans/` local. Never stage or commit plans; do not force-add them.
