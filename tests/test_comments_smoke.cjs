@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'dtf.user.js'), 'utf8');
+assert.doesNotMatch(source, /(?:window\.)?location\.reload\(/, 'settings must not reload the page');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtf-comment-smoke-'));
 const html = path.join(dir, 'test.html');
 const values = {
@@ -30,7 +31,7 @@ window.GM_getValue = (key, fallback) => values.has(key) ? values.get(key) : fall
 window.GM_setValue = (key, value) => values.set(key, value);
 window.GM_addValueChangeListener = () => 1;
 window.GM_removeValueChangeListener = () => {};
-window.GM_registerMenuCommand = (name, callback) => { if (name === 'Настройки DTF') window.__openDtfSettings = callback; };
+window.GM_registerMenuCommand = (name, callback) => { if (name === 'Настройки') window.__openDtfSettings = callback; };
 window.GM_xmlhttpRequest = () => { throw Error('Unexpected request'); };
 window.unsafeWindow = window;
 window.fetch = async input => new Response(JSON.stringify({result:{items:String(input).includes('/comments?')?[{id:3,media:[{data:{has_audio:false}}]},{id:4,media:[{data:{has_audio:false}}]}]:[{data:{id:77,commentEditor:{enabled:false,text:'Комментарии закрыты'}}}]}}), {headers:{'Content-Type':'application/json'}});
@@ -65,7 +66,11 @@ window.fetch = async input => new Response(JSON.stringify({result:{items:String(
   const settingsGrid = document.querySelector('.dtf-vm-settings-grid');
   if (getComputedStyle(settingsGrid).gridTemplateColumns.trim().split(' ').length !== 3) return fail('settings grid has an unused column');
   const sectionCounts = [...settingsGrid.children].map(column => column.children.length).join(',');
-  if (sectionCounts !== '3,2,3') return fail('settings columns are unbalanced: ' + sectionCounts);
+  if (sectionCounts !== '2,3,3') return fail('settings columns are unbalanced: ' + sectionCounts);
+  const middleSections = [...settingsGrid.children[1].querySelectorAll(':scope > .dtf-vm-section h3')].map(heading => heading.textContent).join(',');
+  if (middleSections !== 'Интерфейс,Комментарии,Правая панель') return fail('middle column section order is wrong: ' + middleSections);
+  const rightSections = [...settingsGrid.children[2].querySelectorAll(':scope > .dtf-vm-section h3')].map(heading => heading.textContent).join(',');
+  if (rightSections !== 'Левая панель,Темы,Разное') return fail('right column section order is wrong: ' + rightSections);
   const gif = document.querySelector('.comment[data-id="4"] .comment-media');
   if (!gif.hasAttribute('data-dtf-vm-hidden')) return fail('GIF fixture was not hidden initially');
   const hideVideos = document.querySelector('.dtf-vm-dialog [name=hideCommentVideos]');
@@ -73,8 +78,12 @@ window.fetch = async input => new Response(JSON.stringify({result:{items:String(
   const hideGifs = document.querySelector('.dtf-vm-dialog [name=hideCommentGifs]');
   hideGifs.checked = false; hideGifs.dispatchEvent(new Event('change', {bubbles:true}));
   if (gif.hasAttribute('data-dtf-vm-hidden')) return fail('GIF remained hidden when hide GIFs was disabled');
-  const hideMedia = document.querySelector('.dtf-vm-dialog [name=hideCommentMedia]');
-  hideMedia.checked = false; hideMedia.dispatchEvent(new Event('change', {bubbles:true}));
+  const noCommentToggle = document.querySelector('.dtf-vm-dialog [name=showNoCommentIcon]');
+  noCommentToggle.checked = false; noCommentToggle.dispatchEvent(new Event('change', {bubbles:true}));
+  if (icon.classList.contains('dtf-vm-nocomment-hidden') || document.querySelector('.dtf-vm-nocomment')) return fail('disabling no-comment indicator did not update in place');
+  noCommentToggle.checked = true; noCommentToggle.dispatchEvent(new Event('change', {bubbles:true}));
+  if (!icon.classList.contains('dtf-vm-nocomment-hidden') || !document.querySelector('.dtf-vm-nocomment')) return fail('enabling no-comment indicator did not update in place');
+  const hideMedia = document.querySelector('.dtf-vm-dialog [name=hideCommentMedia]');  hideMedia.checked = false; hideMedia.dispatchEvent(new Event('change', {bubbles:true}));
   const dependencies = {expandComments:['expandAllBranches','skipHiddenComments'],showRemovedComments:['showCommentEdits','showHiddenComments'],hideCommentMedia:['hideCommentGifs','hideCommentImages','hideCommentVideos','showMediaRestore'],enableCommentQuote:['quoteMoveTo']};
   for (const [parent, children] of Object.entries(dependencies)) for (const name of children) {
     const input = document.querySelector('.dtf-vm-dialog [name=' + name + ']');
