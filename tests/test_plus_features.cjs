@@ -1,0 +1,115 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+
+const source = fs.readFileSync('dtf.user.js', 'utf8');
+const start = source.indexOf('  const get = (key, fallback) =>');
+const end = source.indexOf('  const sidebarOptions =', start);
+assert(start > 0 && end > start);
+const settings = { plusFeatures: true, hidePlusAds: false };
+let fetchResponse = Response.json({ result: { items: [{ leonardoUuid: 'new', dateLastUsedTimestamp: 2 }] } });
+let failGifHistorySave = false;
+const storage = new Map([['user', JSON.stringify({ id: 1, badge: null, isPlus: false })]]);
+const handlers = [];
+const notifications = [];
+let onLoad;
+const page = {
+  localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
+  StorageEvent: class { constructor(type, init) { Object.assign(this, init, { type }); } stopImmediatePropagation() { this.stopped = true; } },
+  Headers,
+  Response,
+  addEventListener: (type, handler) => { if (type === 'load') onLoad = handler; else handlers.push(handler); },
+  dispatchEvent: event => { notifications.push(event); for (const handler of handlers) { if (event.stopped) break; handler(event); } },
+  fetch: async () => fetchResponse,
+};
+const context = { GM_getValue: (key, fallback) => settings[key] ?? fallback, GM_setValue: (key, value) => { if (failGifHistorySave && key.startsWith('plusRecentGifs:')) throw Error('Storage unavailable'); settings[key] = value; }, unsafeWindow: page, document: { readyState: 'loading' }, window: { innerWidth: 1920 }, location: { href: 'https://dtf.ru/', origin: 'https://dtf.ru' }, URL, console };
+vm.runInNewContext(`${source.slice(start, end)}\nglobalThis.syncPlusTest = syncPlus; globalThis.liveEnabledTest = liveEnabled; globalThis.stretchRightActiveTest = stretchRightActive; globalThis.viewedModeEnabledTest = viewedModeEnabled; globalThis.loadViewedPostsTest = loadViewedPosts; globalThis.postIdFromUrlTest = postIdFromUrl;`, context);
+const feedStart = source.indexOf('  const feedMetrics =');
+const feedEnd = source.indexOf('  const style =', feedStart);
+const layoutContext = {};
+vm.runInNewContext(`${source.slice(feedStart, feedEnd)}\nglobalThis.feedMetricsTest = feedMetrics;`, layoutContext);
+(async () => {
+  assert.equal(JSON.parse(storage.get('user')).isPlus, true);
+  assert.equal(notifications.length, 1);
+  onLoad();
+  assert.equal(notifications.length, 2, 'notify site even if storage already says isPlus=true');
+  context.syncPlusTest();
+  assert.equal(notifications.length, 2, 'do not notify on every DOM mutation');
+  let sitePlus = true;
+  page.addEventListener('storage', event => { if (event.key === 'user') sitePlus = JSON.parse(event.newValue)?.isPlus; });
+  storage.set('user', JSON.stringify({ id: 1, badge: null, isPlus: false }));
+  const stale = new page.StorageEvent('storage', { key: 'user', newValue: storage.get('user') });
+  page.dispatchEvent(stale);
+  assert.equal(stale.stopped, true, 'do not deliver stale value after restored value');
+  assert.equal(sitePlus, true);
+  assert.equal(JSON.parse(storage.get('user')).isPlus, true);
+  page.dispatchEvent(new page.StorageEvent('storage', { key: 'user', newValue: 'null' }));
+  assert.equal(sitePlus, undefined, 'logout notification must reach site');
+  assert.equal(settings.hidePlusAds, false);
+  const now = 1_700_000_000_000;
+  const history = context.loadViewedPostsTest([{ id: 123, timestamp: now }, { id: 456, timestamp: now - 86_400_001 }, { id: 789, timestamp: now - 172_800_001 }, { id: 'bad', timestamp: now }], now);
+  assert.deepEqual(Array.from(history.keys()), ['123', '456'], 'keep valid viewed posts for 48 hours');
+  assert.equal(context.postIdFromUrlTest('/games/5326829-title'), '5326829');
+  assert.equal(context.postIdFromUrlTest('/id2886808'), null);
+  assert.equal(context.postIdFromUrlTest('https://example.com/games/5326829-title'), null);
+  settings.hideViewedPosts = true;
+  assert.equal(context.viewedModeEnabledTest(), true);
+  settings.hideViewedPosts = false;
+  settings.showHideButton = true;
+  assert.equal(context.viewedModeEnabledTest(), true, 'manual buttons work without auto-hide');
+  settings.showHideButton = false;
+  assert.equal(context.viewedModeEnabledTest(), false);
+  assert.equal(layoutContext.feedMetricsTest(1920, 100, 220, 320).feed, 1348);
+  assert.equal(layoutContext.feedMetricsTest(1920, 100, 220, 0).feed, 1668);
+  settings.hideRightSidebar = true;
+  settings.livePanel = true;
+  assert.equal(context.liveEnabledTest(), true);
+  assert.equal(context.stretchRightActiveTest(), false);
+  settings.livePanel = false;
+  settings.stretchRight = true;
+  assert.equal(context.stretchRightActiveTest(), true);
+  assert.equal(context.liveEnabledTest(), false);
+  settings.livePanel = true;
+  assert.equal(context.stretchRightActiveTest(), false, 'Live panel takes precedence if both stored values are true');
+  assert.equal(context.liveEnabledTest(), true);
+  settings.hideRightSidebar = false;
+  assert.equal(context.liveEnabledTest(), false);
+  assert.equal(context.stretchRightActiveTest(), false);
+  settings.hideRightSidebar = true;
+  context.window.innerWidth = 1000;
+  assert.equal(context.liveEnabledTest(), false);
+  assert.equal(context.stretchRightActiveTest(), false);
+  settings.plusFeatures = false;
+  context.syncPlusTest();
+  assert.equal(JSON.parse(storage.get('user')).isPlus, false);
+  settings.plusFeatures = true;
+  context.syncPlusTest();
+  settings['plusRecentGifs:1'] = [{ leonardoUuid: 'old', dateLastUsedTimestamp: 1 }];
+  const response = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
+  assert.deepEqual((await response.json()).result.items.map(x => x.leonardoUuid), ['new', 'old']);
+  assert.equal(settings['plusRecentGifs:1'].length, 2);
+  fetchResponse = new Response('not JSON', { status: 502 });
+  const failed = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
+  assert.equal(failed, fetchResponse, 'preserve original response when history processing fails');
+  assert.equal(failed.status, 502);
+  fetchResponse = Response.json({ result: { items: [{ leonardoUuid: 'new', dateLastUsedTimestamp: 2 }] } });
+  failGifHistorySave = true;
+  const storageFailure = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
+  assert.equal(storageFailure, fetchResponse, 'preserve original response when history cannot be saved');
+  failGifHistorySave = false;
+  storage.set('user', JSON.stringify({ id: 2, badge: null, isPlus: true }));
+  const separate = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
+  assert.deepEqual((await separate.json()).result.items.map(x => x.leonardoUuid), ['new']);
+  settings.plusFeatures = false;
+  context.syncPlusTest();
+  assert.equal(JSON.parse(storage.get('user')).isPlus, false);
+  storage.set('user', JSON.stringify({ id: 3, badge: 42, isPlus: true }));
+  settings.plusFeatures = true;
+  context.syncPlusTest();
+  settings.plusFeatures = false;
+  context.syncPlusTest();
+  assert.equal(JSON.parse(storage.get('user')).isPlus, true);
+  const plain = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
+  assert.deepEqual((await plain.json()).result.items.map(x => x.leonardoUuid), ['new']);
+  console.log('OK: Plus, GIF history, viewed-post TTL, and right-column modes');
+})().catch(error => { console.error(error); process.exitCode = 1; });
