@@ -39,6 +39,11 @@ setTimeout(() => {
   if (branchClicks !== 0) return fail('branches expanded while option disabled');
   if (hiddenCollapseClicks !== 1) return fail('hidden thread was not collapsed');
   window.menuCommand();
+  const group = document.querySelector('[name=expandAllBranches]').closest('details');
+  if (!group || group.open || group.querySelectorAll('label').length !== 2) return fail('comment subsettings are not collapsed together');
+  group.open = true;
+  if (group.querySelectorAll('label').length !== 2) return fail('comment subsettings did not expand');
+  if (!document.querySelector('.dtf-vm-section h3 .dtf-vm-section-icon svg')) return fail('section SVG icon is missing');
   const all = document.querySelector('[name=expandAllBranches]');
   const skip = document.querySelector('[name=skipHiddenComments]');
   if (!all || all.checked || !skip || !skip.checked) return fail('defaults differ from ReReDesign export');
