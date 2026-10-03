@@ -1,0 +1,100 @@
+const assert = require('node:assert/strict');
+const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+
+const script = fs.readFileSync(path.join(__dirname, '..', 'dtf.user.js'), 'utf8');
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtf-chromium-'));
+const html = path.join(dir, 'test.html');
+const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><aside class="sidebar"><section class="sidebar__section"><div class="sidebar__title" data-section="topics">Темы</div><div class="sidebar__section-content"><a class="sidebar-item" href="https://dtf.ru/games"><span class="sidebar-item__text">Игры</span></a><a class="sidebar-item" href="https://dtf.ru/cinema"><span class="sidebar-item__text">Кино</span></a><a class="sidebar-item" href="https://edu.vc.ru" target="_blank"><div class="sidebar-item__text"><span class="sidebar-item__label">Обучение <svg class="sidebar-item__trailing-icon"></svg></span></div></a></div></section><section class="sidebar__section"><button class="sidebar__title" data-section="services"><span>Сервисы</span></button><div class="sidebar__section-content"><a class="sidebar-item" href="/service">Сервис</a></div></section></aside><script>
+const values = new Map([['smallFixes', false]]);
+window.GM_getValue = (key, fallback) => values.has(key) ? values.get(key) : fallback;
+window.GM_setValue = (key, value) => values.set(key, value);
+window.GM_addValueChangeListener = () => 1;
+window.GM_removeValueChangeListener = () => {};
+window.GM_registerMenuCommand = (label, callback) => { window.menuCommand = callback; };
+window.GM_xmlhttpRequest = () => { throw Error('Unexpected network request'); };
+window.sockets = [];
+window.WebSocket = class { constructor() { this.sent = []; window.sockets.push(this); } send(value) { this.sent.push(value); } close() { this.closed = true; } };
+window.unsafeWindow = window;
+</script><script>${script}</script><script>
+setTimeout(() => {
+  const fail = message => { document.body.dataset.result = 'FAIL: ' + message; };
+  const nativeSetTimeout = window.setTimeout.bind(window);
+  const nativeClearTimeout = window.clearTimeout.bind(window);
+  const reconnects = [];
+  window.setTimeout = (callback, delay, ...args) => {
+    if (delay === 3000) { const timer = { callback, cleared: false }; reconnects.push(timer); return timer; }
+    return nativeSetTimeout(callback, delay, ...args);
+  };
+  window.clearTimeout = timer => {
+    if (timer && typeof timer === 'object') timer.cleared = true;
+    else nativeClearTimeout(timer);
+  };
+  if (document.querySelector('.dtf-vm-topic-search')) return fail('enabled by default');
+  window.menuCommand();
+  const toggle = document.querySelector('.dtf-vm-dialog [name=topicSearchEnabled]');
+  if (!toggle || toggle.checked) return fail('missing disabled-by-default setting');
+  const hideAds = document.querySelector('.dtf-vm-dialog [name=hidePlusAds]');
+  const educationLink = document.querySelector('.sidebar-item[href="https://edu.vc.ru"]');
+  const services = document.querySelector('.sidebar__section:has(> .sidebar__title[data-section="services"])');
+  if (!hideAds || !educationLink || !services) return fail('missing ad setting or sidebar items');
+  hideAds.checked = true; hideAds.onchange({target: hideAds});
+  if (getComputedStyle(educationLink).display !== 'none' || getComputedStyle(services).display !== 'none') return fail('hide education and services with ads');
+  hideAds.checked = false; hideAds.onchange({target: hideAds});
+  if (getComputedStyle(educationLink).display === 'none' || getComputedStyle(services).display === 'none') return fail('show education and services with ads');
+  const links = [...document.querySelectorAll('.sidebar-item')];
+  toggle.checked = true; toggle.onchange({target: toggle});
+  let input = document.querySelector('.dtf-vm-topic-search');
+  if (!input) return fail('enable');
+  input.value = 'КИНО'; input.dispatchEvent(new Event('input', {bubbles:true}));
+  if (!links[0].classList.contains('dtf-vm-topic-search-hidden') || links[1].classList.contains('dtf-vm-topic-search-hidden')) return fail('case-insensitive filtering');
+  input.value = ' '; input.dispatchEvent(new Event('input', {bubbles:true}));
+  if (links.some(link => link.classList.contains('dtf-vm-topic-search-hidden'))) return fail('clear query');
+  toggle.checked = false; toggle.onchange({target: toggle});
+  if (document.querySelector('.dtf-vm-topic-search') || links.some(link => link.classList.contains('dtf-vm-topic-search-hidden'))) return fail('disable and clear filter');
+  toggle.checked = true; toggle.onchange({target: toggle});
+  if (!document.querySelector('.dtf-vm-topic-search')) return fail('re-enable');
+  const right = document.querySelector('.dtf-vm-dialog [name=hideRightSidebar]');
+  const live = document.querySelector('.dtf-vm-dialog [name=livePanel]');
+  right.checked = true; right.onchange({target: right});
+  live.checked = true; live.onchange({target: live});
+  const oldSocket = window.sockets[0];
+  if (!oldSocket) return fail('live socket not created');
+  const oldMessage = oldSocket.onmessage;
+  const oldClose = oldSocket.onclose;
+  live.checked = false; live.onchange({target: live});
+  live.checked = true; live.onchange({target: live});
+  const currentSocket = window.sockets[1];
+  if (!currentSocket) return fail('live socket not recreated');
+  oldMessage({data: '2'});
+  oldClose();
+  if (currentSocket.sent.length || reconnects.length) return fail('stale socket callback affected current connection');
+  currentSocket.onclose();
+  currentSocket.onclose();
+  if (reconnects.length !== 1) return fail('duplicate close scheduled multiple reconnects');
+  live.checked = false; live.onchange({target: live});
+  if (!reconnects[0].cleared) return fail('disabling panel did not cancel reconnect');
+  reconnects[0].callback();
+  if (window.sockets.length !== 2) return fail('cancelled reconnect opened a socket');
+  live.checked = true; live.onchange({target: live});
+  const reconnectSocket = window.sockets[2];
+  reconnectSocket.onclose();
+  if (reconnects.length !== 2) return fail('close did not schedule reconnect');
+  reconnects[1].callback();
+  if (window.sockets.length !== 4) return fail('reconnect did not create exactly one socket');
+  live.checked = false; live.onchange({target: live});
+  document.body.dataset.result = 'PASS';
+}, 300);
+</script>`;
+fs.writeFileSync(html, fixture);
+try {
+  const result = spawnSync('/usr/bin/chromium', ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--window-size=1920,1080', `--user-data-dir=${path.join(dir, 'profile')}`, '--dump-dom', '--virtual-time-budget=1000', `file://${html}`], { encoding: 'utf8', timeout: 30000 });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /data-result="PASS"/, result.stdout.slice(-500) + result.stderr);
+  console.log('OK: topic search filters case-insensitively and clears in clean Chromium profile');
+} finally {
+  fs.rmSync(dir, { recursive: true, force: true });
+}
