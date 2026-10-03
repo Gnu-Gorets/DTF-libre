@@ -10,11 +10,11 @@ Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open
 
 - Post images, including galleries and article images, load eagerly. Chromium handles parallel requests; no custom sequential download queue exists.
 - Image decoding uses `async`. Ready images appear without opacity fade. Cached images recover missing `data-loaded` state.
-- Blurred post thumbnails are replaced with `Загрузка изображения…` while waiting. Failed images show `Не удалось загрузить изображение`. This changes loading presentation, not CDN response time.
-- `Повысить качество` selects responsive image sizes through `picture`/`srcset`, accounts for pixel density once, and limits each variant to 2560 px. Repeated DOM updates preserve selected URLs; resize recomputes sizes, disabling quality restores original URLs and styles.
+- Blurred post thumbnails are replaced with a loading message while waiting. Failed images show an error message. This changes loading presentation, not CDN response time.
+- The image quality setting selects responsive image sizes through `picture`/`srcset`, accounts for pixel density once, and limits each variant to 2560 px. Repeated DOM updates preserve selected URLs; resize recomputes sizes, disabling quality restores original URLs and styles.
 - DOM updates share one animation-frame callback instead of repeatedly applying settings within one frame.
 
-Eager loading starts requests for rendered post images, including offscreen gallery slides. Long feeds can consume additional bandwidth. Disable `Повысить качество` when transfer size matters. Network stalls and unavailable CDN files cannot be eliminated by userscript.
+Eager loading starts requests for rendered post images, including off-screen gallery slides. Long feeds can consume additional bandwidth. Disable image quality enhancement when transfer size matters. Network stalls and unavailable CDN files cannot be eliminated by userscript.
 
 ## Checks
 
