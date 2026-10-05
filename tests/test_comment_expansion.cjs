@@ -1,12 +1,15 @@
-const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
+const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'dtf.user.js'), 'utf8');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtf-comments-'));
-const html = path.join(dir, 'test.html');
+const source = fs.readFileSync(
+  path.join(__dirname, "..", "dtf.user.js"),
+  "utf8",
+);
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-comments-"));
+const html = path.join(dir, "test.html");
 const fixture = `<!doctype html><meta charset="utf-8"><body>
 <div class="comments"><div class="comment"><button class="link-button link-button--small comment__expand">4 ответа</button></div></div>
 <div class="comment comment--hidden"><button class="link-button link-button--small comment__expand">Свернуть</button></div>
@@ -56,11 +59,30 @@ setTimeout(() => {
 </script></body>`;
 fs.writeFileSync(html, fixture);
 try {
-  const result = spawnSync('/usr/bin/chromium', ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', `--user-data-dir=${path.join(dir, 'profile')}`, '--dump-dom', '--virtual-time-budget=9500', `file://${html}`], { encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(
+    "/usr/bin/chromium",
+    [
+      "--headless",
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      `--user-data-dir=${path.join(dir, "profile")}`,
+      "--dump-dom",
+      "--virtual-time-budget=9500",
+      `file://${html}`,
+    ],
+    { encoding: "utf8", timeout: 30000 },
+  );
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /data-result="PASS"/, result.stdout.slice(-700) + result.stderr);
-  console.log('OK: full expansion, branch default/toggle, and hidden-thread skipping');
+  assert.match(
+    result.stdout,
+    /data-result="PASS"/,
+    result.stdout.slice(-700) + result.stderr,
+  );
+  console.log(
+    "OK: full expansion, branch default/toggle, and hidden-thread skipping",
+  );
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }

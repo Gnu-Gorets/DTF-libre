@@ -1,62 +1,138 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
 
-const source = fs.readFileSync('dtf.user.js', 'utf8');
-const start = source.indexOf('  const get = (key, fallback) =>');
-const end = source.indexOf('  const sidebarOptions =', start);
+const source = fs.readFileSync("dtf.user.js", "utf8");
+const start = source.indexOf("  const get = (key, fallback) =>");
+const end = source.indexOf("  const sidebarOptions =", start);
 assert(start > 0 && end > start);
 const settings = { plusFeatures: true, hidePlusAds: false };
-let fetchResponse = Response.json({ result: { items: [{ leonardoUuid: 'new', dateLastUsedTimestamp: 2 }] } });
+let fetchResponse = Response.json({
+  result: { items: [{ leonardoUuid: "new", dateLastUsedTimestamp: 2 }] },
+});
 let failGifHistorySave = false;
-const storage = new Map([['user', JSON.stringify({ id: 1, badge: null, isPlus: false })]]);
+const storage = new Map([
+  ["user", JSON.stringify({ id: 1, badge: null, isPlus: false })],
+]);
 const handlers = [];
 const notifications = [];
 let onLoad;
 const page = {
-  localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
-  StorageEvent: class { constructor(type, init) { Object.assign(this, init, { type }); } stopImmediatePropagation() { this.stopped = true; } },
+  localStorage: {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+  },
+  StorageEvent: class {
+    constructor(type, init) {
+      Object.assign(this, init, { type });
+    }
+    stopImmediatePropagation() {
+      this.stopped = true;
+    }
+  },
   Headers,
   Response,
-  addEventListener: (type, handler) => { if (type === 'load') onLoad = handler; else handlers.push(handler); },
-  dispatchEvent: event => { notifications.push(event); for (const handler of handlers) { if (event.stopped) break; handler(event); } },
+  addEventListener: (type, handler) => {
+    if (type === "load") onLoad = handler;
+    else handlers.push(handler);
+  },
+  dispatchEvent: (event) => {
+    notifications.push(event);
+    for (const handler of handlers) {
+      if (event.stopped) break;
+      handler(event);
+    }
+  },
   fetch: async () => fetchResponse,
 };
-const context = { GM_getValue: (key, fallback) => settings[key] ?? fallback, GM_setValue: (key, value) => { if (failGifHistorySave && key.startsWith('plusRecentGifs:')) throw Error('Storage unavailable'); settings[key] = value; }, unsafeWindow: page, document: { readyState: 'loading' }, window: { innerWidth: 1920 }, location: { href: 'https://dtf.ru/', origin: 'https://dtf.ru' }, URL, console };
-vm.runInNewContext(`${source.slice(start, end)}\nglobalThis.syncPlusTest = syncPlus; globalThis.liveEnabledTest = liveEnabled; globalThis.stretchRightActiveTest = stretchRightActive; globalThis.viewedModeEnabledTest = viewedModeEnabled; globalThis.loadViewedPostsTest = loadViewedPosts; globalThis.postIdFromUrlTest = postIdFromUrl;`, context);
-const feedStart = source.indexOf('  const feedMetrics =');
-const feedEnd = source.indexOf('  const style =', feedStart);
+const context = {
+  GM_getValue: (key, fallback) => settings[key] ?? fallback,
+  GM_setValue: (key, value) => {
+    if (failGifHistorySave && key.startsWith("plusRecentGifs:"))
+      throw Error("Storage unavailable");
+    settings[key] = value;
+  },
+  unsafeWindow: page,
+  document: { readyState: "loading" },
+  window: { innerWidth: 1920 },
+  location: { href: "https://dtf.ru/", origin: "https://dtf.ru" },
+  URL,
+  console,
+};
+vm.runInNewContext(
+  `${source.slice(start, end)}\nglobalThis.syncPlusTest = syncPlus; globalThis.liveEnabledTest = liveEnabled; globalThis.stretchRightActiveTest = stretchRightActive; globalThis.viewedModeEnabledTest = viewedModeEnabled; globalThis.loadViewedPostsTest = loadViewedPosts; globalThis.postIdFromUrlTest = postIdFromUrl;`,
+  context,
+);
+const feedStart = source.indexOf("  const feedMetrics =");
+const feedEnd = source.indexOf("  const style =", feedStart);
 const layoutContext = {};
-vm.runInNewContext(`${source.slice(feedStart, feedEnd)}\nglobalThis.feedMetricsTest = feedMetrics;`, layoutContext);
+vm.runInNewContext(
+  `${source.slice(feedStart, feedEnd)}\nglobalThis.feedMetricsTest = feedMetrics;`,
+  layoutContext,
+);
 (async () => {
-  assert.equal(JSON.parse(storage.get('user')).isPlus, true);
+  assert.equal(JSON.parse(storage.get("user")).isPlus, true);
   assert.equal(notifications.length, 1);
   onLoad();
-  assert.equal(notifications.length, 2, 'notify site even if storage already says isPlus=true');
+  assert.equal(
+    notifications.length,
+    2,
+    "notify site even if storage already says isPlus=true",
+  );
   context.syncPlusTest();
-  assert.equal(notifications.length, 2, 'do not notify on every DOM mutation');
+  assert.equal(notifications.length, 2, "do not notify on every DOM mutation");
   let sitePlus = true;
-  page.addEventListener('storage', event => { if (event.key === 'user') sitePlus = JSON.parse(event.newValue)?.isPlus; });
-  storage.set('user', JSON.stringify({ id: 1, badge: null, isPlus: false }));
-  const stale = new page.StorageEvent('storage', { key: 'user', newValue: storage.get('user') });
+  page.addEventListener("storage", (event) => {
+    if (event.key === "user") sitePlus = JSON.parse(event.newValue)?.isPlus;
+  });
+  storage.set("user", JSON.stringify({ id: 1, badge: null, isPlus: false }));
+  const stale = new page.StorageEvent("storage", {
+    key: "user",
+    newValue: storage.get("user"),
+  });
   page.dispatchEvent(stale);
-  assert.equal(stale.stopped, true, 'do not deliver stale value after restored value');
+  assert.equal(
+    stale.stopped,
+    true,
+    "do not deliver stale value after restored value",
+  );
   assert.equal(sitePlus, true);
-  assert.equal(JSON.parse(storage.get('user')).isPlus, true);
-  page.dispatchEvent(new page.StorageEvent('storage', { key: 'user', newValue: 'null' }));
-  assert.equal(sitePlus, undefined, 'logout notification must reach site');
+  assert.equal(JSON.parse(storage.get("user")).isPlus, true);
+  page.dispatchEvent(
+    new page.StorageEvent("storage", { key: "user", newValue: "null" }),
+  );
+  assert.equal(sitePlus, undefined, "logout notification must reach site");
   assert.equal(settings.hidePlusAds, false);
   const now = 1_700_000_000_000;
-  const history = context.loadViewedPostsTest([{ id: 123, timestamp: now }, { id: 456, timestamp: now - 86_400_001 }, { id: 789, timestamp: now - 172_800_001 }, { id: 'bad', timestamp: now }], now);
-  assert.deepEqual(Array.from(history.keys()), ['123', '456'], 'keep valid viewed posts for 48 hours');
-  assert.equal(context.postIdFromUrlTest('/games/5326829-title'), '5326829');
-  assert.equal(context.postIdFromUrlTest('/id2886808'), null);
-  assert.equal(context.postIdFromUrlTest('https://example.com/games/5326829-title'), null);
+  const history = context.loadViewedPostsTest(
+    [
+      { id: 123, timestamp: now },
+      { id: 456, timestamp: now - 86_400_001 },
+      { id: 789, timestamp: now - 172_800_001 },
+      { id: "bad", timestamp: now },
+    ],
+    now,
+  );
+  assert.deepEqual(
+    Array.from(history.keys()),
+    ["123", "456"],
+    "keep valid viewed posts for 48 hours",
+  );
+  assert.equal(context.postIdFromUrlTest("/games/5326829-title"), "5326829");
+  assert.equal(context.postIdFromUrlTest("/id2886808"), null);
+  assert.equal(
+    context.postIdFromUrlTest("https://example.com/games/5326829-title"),
+    null,
+  );
   settings.hideViewedPosts = true;
   assert.equal(context.viewedModeEnabledTest(), true);
   settings.hideViewedPosts = false;
   settings.showHideButton = true;
-  assert.equal(context.viewedModeEnabledTest(), true, 'manual buttons work without auto-hide');
+  assert.equal(
+    context.viewedModeEnabledTest(),
+    true,
+    "manual buttons work without auto-hide",
+  );
   settings.showHideButton = false;
   assert.equal(context.viewedModeEnabledTest(), false);
   assert.equal(layoutContext.feedMetricsTest(1920, 100, 220, 320).feed, 1348);
@@ -70,7 +146,11 @@ vm.runInNewContext(`${source.slice(feedStart, feedEnd)}\nglobalThis.feedMetricsT
   assert.equal(context.stretchRightActiveTest(), true);
   assert.equal(context.liveEnabledTest(), false);
   settings.livePanel = true;
-  assert.equal(context.stretchRightActiveTest(), false, 'Live panel takes precedence if both stored values are true');
+  assert.equal(
+    context.stretchRightActiveTest(),
+    false,
+    "Live panel takes precedence if both stored values are true",
+  );
   assert.equal(context.liveEnabledTest(), true);
   settings.hideRightSidebar = false;
   assert.equal(context.liveEnabledTest(), false);
@@ -81,64 +161,153 @@ vm.runInNewContext(`${source.slice(feedStart, feedEnd)}\nglobalThis.feedMetricsT
   assert.equal(context.stretchRightActiveTest(), false);
   settings.plusFeatures = false;
   context.syncPlusTest();
-  assert.equal(JSON.parse(storage.get('user')).isPlus, false);
+  assert.equal(JSON.parse(storage.get("user")).isPlus, false);
   settings.plusFeatures = true;
   context.syncPlusTest();
-  settings['plusRecentGifs:1'] = [{ leonardoUuid: 'old', dateLastUsedTimestamp: 1 }];
-  const response = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
-  assert.deepEqual((await response.json()).result.items.map(x => x.leonardoUuid), ['new', 'old']);
-  assert.equal(settings['plusRecentGifs:1'].length, 2);
-  fetchResponse = new Response('not JSON', { status: 502 });
-  const failed = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
-  assert.equal(failed, fetchResponse, 'preserve original response when history processing fails');
+  settings["plusRecentGifs:1"] = [
+    { leonardoUuid: "old", dateLastUsedTimestamp: 1 },
+  ];
+  const response = await page.fetch(
+    "https://api.dtf.ru/v2.9/favorite-gifs?page=0",
+  );
+  assert.deepEqual(
+    (await response.json()).result.items.map((x) => x.leonardoUuid),
+    ["new", "old"],
+  );
+  assert.equal(settings["plusRecentGifs:1"].length, 2);
+  fetchResponse = new Response("not JSON", { status: 502 });
+  const failed = await page.fetch(
+    "https://api.dtf.ru/v2.9/favorite-gifs?page=0",
+  );
+  assert.equal(
+    failed,
+    fetchResponse,
+    "preserve original response when history processing fails",
+  );
   assert.equal(failed.status, 502);
-  fetchResponse = Response.json({ result: { items: [{ leonardoUuid: 'new', dateLastUsedTimestamp: 2 }] } });
+  fetchResponse = Response.json({
+    result: { items: [{ leonardoUuid: "new", dateLastUsedTimestamp: 2 }] },
+  });
   failGifHistorySave = true;
-  const storageFailure = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
-  assert.equal(storageFailure, fetchResponse, 'preserve original response when history cannot be saved');
+  const storageFailure = await page.fetch(
+    "https://api.dtf.ru/v2.9/favorite-gifs?page=0",
+  );
+  assert.equal(
+    storageFailure,
+    fetchResponse,
+    "preserve original response when history cannot be saved",
+  );
   failGifHistorySave = false;
-  storage.set('user', JSON.stringify({ id: 2, badge: null, isPlus: true }));
-  const separate = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
-  assert.deepEqual((await separate.json()).result.items.map(x => x.leonardoUuid), ['new']);
+  storage.set("user", JSON.stringify({ id: 2, badge: null, isPlus: true }));
+  const separate = await page.fetch(
+    "https://api.dtf.ru/v2.9/favorite-gifs?page=0",
+  );
+  assert.deepEqual(
+    (await separate.json()).result.items.map((x) => x.leonardoUuid),
+    ["new"],
+  );
   settings.plusFeatures = false;
   context.syncPlusTest();
-  assert.equal(JSON.parse(storage.get('user')).isPlus, false);
-  storage.set('user', JSON.stringify({ id: 3, badge: 42, isPlus: true }));
+  assert.equal(JSON.parse(storage.get("user")).isPlus, false);
+  storage.set("user", JSON.stringify({ id: 3, badge: 42, isPlus: true }));
   settings.plusFeatures = true;
   context.syncPlusTest();
   settings.plusFeatures = false;
   context.syncPlusTest();
-  assert.equal(JSON.parse(storage.get('user')).isPlus, true);
-  const plain = await page.fetch('https://api.dtf.ru/v2.9/favorite-gifs?page=0');
-  assert.deepEqual((await plain.json()).result.items.map(x => x.leonardoUuid), ['new']);
-  const reactionsUrl = 'https://api.dtf.ru/v2.10/content/5333217/reactions';
-  const denied = code => Response.json({ message: 'Forbidden', error: { code: 403, info: { errorCode: code } } }, { status: 403, headers: { 'content-length': '123', 'content-encoding': 'gzip', 'x-test': 'kept' } });
-  fetchResponse = denied('PLUS_SUBSCRIPTION_REQUIRED');
-  assert.equal(await page.fetch(reactionsUrl), fetchResponse, 'disabled substitution preserves subscription error');
+  assert.equal(JSON.parse(storage.get("user")).isPlus, true);
+  const plain = await page.fetch(
+    "https://api.dtf.ru/v2.9/favorite-gifs?page=0",
+  );
+  assert.deepEqual(
+    (await plain.json()).result.items.map((x) => x.leonardoUuid),
+    ["new"],
+  );
+  const reactionsUrl = "https://api.dtf.ru/v2.10/content/5333217/reactions";
+  const denied = (code) =>
+    Response.json(
+      { message: "Forbidden", error: { code: 403, info: { errorCode: code } } },
+      {
+        status: 403,
+        headers: {
+          "content-length": "123",
+          "content-encoding": "gzip",
+          "x-test": "kept",
+        },
+      },
+    );
+  fetchResponse = denied("PLUS_SUBSCRIPTION_REQUIRED");
+  assert.equal(
+    await page.fetch(reactionsUrl),
+    fetchResponse,
+    "disabled substitution preserves subscription error",
+  );
   settings.plusFeatures = true;
-  for (const url of [reactionsUrl, 'https://api.dtf.ru/v2.9/comment/123/reactions?limit=20']) {
+  for (const url of [
+    reactionsUrl,
+    "https://api.dtf.ru/v2.9/comment/123/reactions?limit=20",
+  ]) {
     const restored = await page.fetch(url);
     assert.equal(restored.status, 200);
     assert.equal(restored.ok, true);
-    assert.deepEqual(await restored.json(), { message: '', result: { reactions: [], lastSortingValue: null } });
-    assert.equal(restored.headers.get('content-length'), null);
-    assert.equal(restored.headers.get('content-encoding'), null);
-    assert.equal(restored.headers.get('x-test'), 'kept');
-    assert.equal((await fetchResponse.clone().json()).error.info.errorCode, 'PLUS_SUBSCRIPTION_REQUIRED', 'original body remains readable');
+    assert.deepEqual(await restored.json(), {
+      message: "",
+      result: { reactions: [], lastSortingValue: null },
+    });
+    assert.equal(restored.headers.get("content-length"), null);
+    assert.equal(restored.headers.get("content-encoding"), null);
+    assert.equal(restored.headers.get("x-test"), "kept");
+    assert.equal(
+      (await fetchResponse.clone().json()).error.info.errorCode,
+      "PLUS_SUBSCRIPTION_REQUIRED",
+      "original body remains readable",
+    );
   }
-  for (const url of ['https://example.com/v2.10/content/123/reactions', 'https://api.dtf.ru/v2.10/content/123/reactions/add', 'https://api.dtf.ru/v2.10/messenger']) {
-    assert.equal(await page.fetch(url), fetchResponse, 'unrelated endpoint remains unchanged');
+  for (const url of [
+    "https://example.com/v2.10/content/123/reactions",
+    "https://api.dtf.ru/v2.10/content/123/reactions/add",
+    "https://api.dtf.ru/v2.10/messenger",
+  ]) {
+    assert.equal(
+      await page.fetch(url),
+      fetchResponse,
+      "unrelated endpoint remains unchanged",
+    );
   }
-  assert.equal(await page.fetch(reactionsUrl, { method: 'POST' }), fetchResponse, 'never fake successful writes');
-  assert.equal(await page.fetch(new Request(reactionsUrl, { method: 'POST' })), fetchResponse);
+  assert.equal(
+    await page.fetch(reactionsUrl, { method: "POST" }),
+    fetchResponse,
+    "never fake successful writes",
+  );
+  assert.equal(
+    await page.fetch(new Request(reactionsUrl, { method: "POST" })),
+    fetchResponse,
+  );
   assert.equal((await page.fetch(new Request(reactionsUrl))).status, 200);
-  for (const code of ['AUTHORIZATION_REQUIRED', 'ACCESS_DENIED', undefined]) {
+  for (const code of ["AUTHORIZATION_REQUIRED", "ACCESS_DENIED", undefined]) {
     fetchResponse = denied(code);
-    assert.equal(await page.fetch(reactionsUrl), fetchResponse, 'preserve non-subscription errors');
+    assert.equal(
+      await page.fetch(reactionsUrl),
+      fetchResponse,
+      "preserve non-subscription errors",
+    );
   }
-  for (const response of [Response.json({ result: { reactions: [{ id: 1 }] } }), new Response('not JSON', { status: 403 }), Response.json({ error: { info: { errorCode: 'PLUS_SUBSCRIPTION_REQUIRED' } } }, { status: 500 })]) {
+  for (const response of [
+    Response.json({ result: { reactions: [{ id: 1 }] } }),
+    new Response("not JSON", { status: 403 }),
+    Response.json(
+      { error: { info: { errorCode: "PLUS_SUBSCRIPTION_REQUIRED" } } },
+      { status: 500 },
+    ),
+  ]) {
     fetchResponse = response;
-    assert.equal(await page.fetch(reactionsUrl), response, 'preserve success, invalid JSON, and server failure');
+    assert.equal(
+      await page.fetch(reactionsUrl),
+      response,
+      "preserve success, invalid JSON, and server failure",
+    );
   }
-  console.log('OK: Plus, GIF history, viewed-post TTL, and right-column modes');
-})().catch(error => { console.error(error); process.exitCode = 1; });
+  console.log("OK: Plus, GIF history, viewed-post TTL, and right-column modes");
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
