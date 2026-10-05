@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.79
+// @version      0.0.80
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -656,21 +656,21 @@
     .dtf-vm-close { position: absolute; top: 8px; right: 10px; color: #fff; background: none; border: 0; font-size: 20px; cursor: pointer; }
     .dtf-vm-top { position: fixed; right: 24px; bottom: 24px; z-index: 2147483646; display: grid; place-items: center; width: 48px; height: 48px; padding: 0; color: #fff !important; background: #1685ff !important; border: 0; border-radius: 50%; box-shadow: 0 3px 12px #0007; font: 28px/1 system-ui,sans-serif !important; cursor: pointer; }
     .dtf-vm-top[hidden] { display: none !important; }
-    html.dtf-vm-hide-popular .sidebar-item[href="/popular"], html.dtf-vm-hide-new .sidebar-item[href="/new"], html.dtf-vm-hide-my .sidebar-item[href="/my"], html.dtf-vm-hide-messages .sidebar-item[href="/m"], html.dtf-vm-hide-rating .sidebar-item[href="/discovery"] { display: none !important; }
-    html.dtf-vm-hide-games .sidebar__section:has(> .sidebar__title[data-section="games"]), html.dtf-vm-hide-topics .sidebar__section:has(> .sidebar__title[data-section="topics"]) { display: none !important; }
+    html.dtf-vm-hide-popular a[href="/popular"], html.dtf-vm-hide-new a[href="/new"], html.dtf-vm-hide-my a[href="/my"], html.dtf-vm-hide-messages a[href="/m"], html.dtf-vm-hide-rating a[href="/discovery"] { display: none !important; }
+    html.dtf-vm-hide-games :has(> [data-section="games"]), html.dtf-vm-hide-topics :has(> [data-section="topics"]) { display: none !important; }
     .scroll-next-button { display: none !important; }
     html.dtf-vm-back-to-top .scroll-prev-button, html.dtf-vm-back-to-top .scroll-to-top { display: none !important; }
     .sidebar, .sidebar *, .layout__left-aside, .layout__left-aside * { scrollbar-width: none; }
     .sidebar::-webkit-scrollbar, .sidebar *::-webkit-scrollbar, .layout__left-aside::-webkit-scrollbar, .layout__left-aside *::-webkit-scrollbar { display: none; }
     .dtf-vm-topic-search { box-sizing: border-box; width: 100%; margin: 4px 0 8px; padding: 7px 10px; color: inherit; background: var(--theme-color-background-content); border: 1px solid var(--theme-color-text-secondary); border-radius: 6px; font: inherit; }
     .dtf-vm-topic-search-hidden { display: none !important; }
-    .dtf-vm-topic-extras { display: grid; row-gap: 4px; }
+    .dtf-vm-topic-extras { display: flex; flex-direction: column; row-gap: 4px; }
+    .dtf-vm-topic-extras > a { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 8px; color: inherit; text-decoration: none; }
+    .dtf-vm-topic-extras > a img { flex: 0 0 32px; width: 32px; height: 32px; object-fit: cover; border-radius: 50%; }
     .dtf-vm-topic-original { display: none !important; }
     .dtf-vm-topic-extras[hidden], .dtf-vm-topic-extras > [hidden] { display: none !important; }
     .dtf-vm-topic-show-all { width: 100%; color: inherit; background: none; border: 0; font: inherit; text-align: left; }
-    html.dtf-vm-reorder-topics .sidebar__section:has(> .sidebar__title[data-section="topics"]) .sidebar-item:not(.dtf-vm-topic-show-all) { cursor: grab; }
-    html.dtf-vm-reorder-topics .sidebar__section:has(> .sidebar__title[data-section="topics"]) .sidebar-item.dtf-vm-dragging { opacity: .4; }
-    html.dtf-vm-hide-footer .sidebar__section:has(> .sidebar__title[data-section="footer"]) { display: none !important; }
+    html.dtf-vm-hide-footer :has(> [data-section="footer"]) { display: none !important; }
     html.dtf-vm-hide-donations-menu [href*="/donat"], html.dtf-vm-hide-plus-menu [href*="/plus"] { display: none !important; }
     html.dtf-vm-waiting-css body { visibility: hidden !important; }
     @media (min-width: 1240px) {
@@ -689,11 +689,10 @@
     .dtf-vm-live-heading a { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
     .dtf-vm-live-comment > a { display: -webkit-box; overflow: hidden; font-size: 15px; line-height: 22px; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
     .dtf-vm-live-heading a:hover, .dtf-vm-live-comment > a:hover { color: var(--theme-color-accent); }
-    /* ponytail: DTF hashes banner class; recheck .lZiytKLX after site updates. */
     html.dtf-vm-hide-plus-ads .supbar--top, html.dtf-vm-hide-plus-ads .header__distribution, html.dtf-vm-hide-plus-ads .header__main-distribution,
     html.dtf-vm-hide-plus-ads .rotator, html.dtf-vm-hide-plus-ads .entry-rotator, html.dtf-vm-hide-plus-ads .entry-steam-pay-widget,
-    html.dtf-vm-hide-plus-ads .sidebar-apps-promo, html.dtf-vm-hide-plus-ads .lZiytKLX,
-    html.dtf-vm-hide-plus-ads .sidebar__section:has(> .sidebar__title[data-section="services"]), html.dtf-vm-hide-plus-ads a.sidebar-item[href="https://edu.vc.ru/chatgpt"], html.dtf-vm-hide-plus-ads a.sidebar-item[href="https://edu.vc.ru"], html.dtf-vm-hide-plus-ads a.sidebar-item[href="/store"] { display: none !important; }
+    html.dtf-vm-hide-plus-ads .sidebar-apps-promo,
+    html.dtf-vm-hide-plus-ads :has(> [data-section="services"]), html.dtf-vm-hide-plus-ads a[href="https://edu.vc.ru/chatgpt"], html.dtf-vm-hide-plus-ads a[href="https://edu.vc.ru"], html.dtf-vm-hide-plus-ads a[href="/store"] { display: none !important; }
     html.dtf-vm-small-fixes .textarea:has(textarea), html.dtf-vm-small-fixes .textarea:has([contenteditable="true"]), html.dtf-vm-small-fixes [class*="comment"] .textarea { padding: 4px 8px !important; border-radius: 6px !important; }
     html.dtf-vm-small-fixes .textarea textarea, html.dtf-vm-small-fixes .textarea [contenteditable="true"], html.dtf-vm-small-fixes .textarea__input, html.dtf-vm-small-fixes [class*="comment"] textarea, html.dtf-vm-small-fixes [class*="comment"] [contenteditable="true"] { padding: 4px 8px !important; border-radius: 4px !important; }
     .dtf-vm-hint { display: block; margin: 1px 0 0 26px; color: #aeb4c0; font-size: 11px; }
@@ -1908,7 +1907,7 @@
               event.preventDefault();
               saveTopicOrder(
                 parent.querySelectorAll(
-                  ":scope > a.sidebar-item:not(.dtf-vm-topic-show-all)",
+                  ":scope > a[href]:not(.dtf-vm-topic-show-all)",
                 ),
               );
             }
@@ -1941,16 +1940,22 @@
           ? `https://leonardo.osnova.io/${encodeURIComponent(topic.avatarUuid)}/-/scale_crop/72x72/`
           : "",
       }));
+    const topicSection = () => {
+      const title = document.querySelector('[data-section="topics"]');
+      const section = title?.parentElement;
+      const content =
+        section &&
+        [...section.children].find(
+          (child) => child !== title && child.querySelector("a[href]"),
+        );
+      return content || null;
+    };
     const availableTopicCount = () =>
       get("onlySubscribedTopics", false)
         ? subscribedTopics?.length || 0
         : get("smallFixes", false)
           ? topicCatalog.length
-          : document
-              .querySelector('.sidebar__title[data-section="topics"]')
-              ?.closest(".sidebar__section")
-              ?.querySelectorAll(".sidebar__section-content > a.sidebar-item")
-              .length || 0;
+          : topicSection()?.querySelectorAll(":scope > a[href]").length || 0;
     const updateTopicControls = () => {
       const enabled = Boolean(get("smallFixes", false));
       for (const name of ["onlySubscribedTopics", "topicLimit"]) {
@@ -1969,17 +1974,14 @@
       input.closest("label").querySelector("output").value = input.value;
     };
     const renderTopics = () => {
-      const section = document
-        .querySelector('.sidebar__title[data-section="topics"]')
-        ?.closest(".sidebar__section");
-      const content = section?.querySelector(".sidebar__section-content");
+      const content = topicSection();
       if (!content) return;
       let search = content.querySelector(".dtf-vm-topic-search");
       if (!get("topicSearchEnabled", false)) {
         search?.remove();
         topicSearch = "";
         content
-          .querySelectorAll("a.sidebar-item")
+          .querySelectorAll("a[href]")
           .forEach((item) =>
             item.classList.remove("dtf-vm-topic-search-hidden"),
           );
@@ -1998,7 +2000,7 @@
       }
       const filterTopicSearch = (root) =>
         root
-          .querySelectorAll("a.sidebar-item")
+          .querySelectorAll("a[href]")
           .forEach((item) =>
             item.classList.toggle(
               "dtf-vm-topic-search-hidden",
@@ -2009,12 +2011,15 @@
                   .includes(topicSearch),
             ),
           );
-      const nativeLinks = [
-        ...content.querySelectorAll(":scope > a.sidebar-item"),
-      ];
+      const nativeLinks = [...content.querySelectorAll(":scope > a[href]")];
       const extra = content.querySelector(".dtf-vm-topic-extras");
-      const nativeShowAll = content.querySelector(
-        ":scope > .sidebar-item:not(a)",
+      const nativeShowAll = [...content.children].find(
+        (item) =>
+          item.tagName !== "A" &&
+          item.textContent
+            .trim()
+            .toLocaleLowerCase()
+            .startsWith("показать все"),
       );
       if (!get("smallFixes", false)) {
         extra?.remove();
@@ -2044,7 +2049,7 @@
         );
         nativeShowAll?.classList.add("dtf-vm-topic-original");
         enableTopicDragging(
-          [...extra.querySelectorAll(":scope > a.sidebar-item")],
+          [...extra.querySelectorAll(":scope > a[href]")],
           extra,
         );
         filterTopicSearch(content);
@@ -2065,12 +2070,7 @@
           fallbackLinks = nativeLinks
             .slice()
             .sort((a, b) =>
-              compareTopicNames(
-                a.querySelector(".sidebar-item__text")?.textContent.trim() ||
-                  a.textContent.trim(),
-                b.querySelector(".sidebar-item__text")?.textContent.trim() ||
-                  b.textContent.trim(),
-              ),
+              compareTopicNames(a.textContent.trim(), b.textContent.trim()),
             );
         }
         const orderedLinks = applyTopicOrder(
@@ -2136,10 +2136,7 @@
         item.append(label);
         list.append(item);
       });
-      enableTopicDragging(
-        [...list.querySelectorAll(":scope > a.sidebar-item")],
-        list,
-      );
+      enableTopicDragging([...list.querySelectorAll(":scope > a[href]")], list);
       if (items.length > limit || (topicsExpanded && items.length > 0)) {
         const showAll = document.createElement("button");
         showAll.className = "sidebar-item dtf-vm-topic-show-all";
