@@ -3,6 +3,34 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = fs.readFileSync("dtf.user.js", "utf8");
+for (const [option, path] of Object.entries({
+  hidePopular: "/popular",
+  hideNew: "/new",
+  hideMy: "/my",
+  hideMessages: "/m",
+  hideRating: "/discovery",
+})) {
+  assert.ok(
+    source.includes(
+      `html.dtf-vm-${option.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)} a[href="${path}"]`,
+    ),
+    `${option} selector ignores changing DTF classes`,
+  );
+}
+for (const [option, section] of Object.entries({
+  hideGames: "games",
+  hideTopics: "topics",
+  hideFooter: "footer",
+})) {
+  assert.ok(
+    source.includes(
+      `html.dtf-vm-${option.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)} :has(> [data-section="${section}"])`,
+    ),
+    `${option} selector ignores changing DTF classes`,
+  );
+}
+assert.match(source, /\.dtf-vm-topic-extras > a \{ display: flex;/);
+assert.match(source, /\.dtf-vm-topic-extras > a img \{ flex: 0 0 32px;/);
 const start = source.indexOf("  const attachStyles =");
 const end = source.indexOf("\n  const primeLayout =", start);
 assert(start >= 0 && end > start);

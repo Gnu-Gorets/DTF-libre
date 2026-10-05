@@ -10,7 +10,7 @@ const script = fs.readFileSync(
 );
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-chromium-"));
 const html = path.join(dir, "test.html");
-const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><aside class="sidebar"><section class="sidebar__section"><div class="sidebar__title" data-section="topics">Темы</div><div class="sidebar__section-content"><a class="sidebar-item" href="https://dtf.ru/games"><span class="sidebar-item__text">Игры</span></a><a class="sidebar-item" href="https://dtf.ru/cinema"><span class="sidebar-item__text">Кино</span></a><a class="sidebar-item" href="https://edu.vc.ru" target="_blank"><div class="sidebar-item__text"><span class="sidebar-item__label">Обучение <svg class="sidebar-item__trailing-icon"></svg></span></div></a></div></section><section class="sidebar__section"><button class="sidebar__title" data-section="services"><span>Сервисы</span></button><div class="sidebar__section-content"><a class="sidebar-item" href="/service">Сервис</a></div></section></aside><script>
+const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><aside class="random-nav"><section class="random-group"><div class="random-heading" data-section="topics">Темы</div><div class="random-links"><a class="random-link" href="https://dtf.ru/games"><span>Игры</span></a><a class="random-link" href="https://dtf.ru/cinema"><span>Кино</span></a><a class="random-link" href="https://edu.vc.ru" target="_blank"><div><span>Обучение <svg></svg></span></div></a></div></section><section class="random-group"><button class="random-heading" data-section="services"><span>Сервисы</span></button><div class="random-links"><a class="random-link" href="/service">Сервис</a></div></section></aside><script>
 const values = new Map([['smallFixes', false]]);
 window.GM_getValue = (key, fallback) => values.has(key) ? values.get(key) : fallback;
 window.GM_setValue = (key, value) => values.set(key, value);
@@ -40,14 +40,14 @@ setTimeout(() => {
   const toggle = document.querySelector('.dtf-vm-dialog [name=topicSearchEnabled]');
   if (!toggle || toggle.checked) return fail('missing disabled-by-default setting');
   const hideAds = document.querySelector('.dtf-vm-dialog [name=hidePlusAds]');
-  const educationLink = document.querySelector('.sidebar-item[href="https://edu.vc.ru"]');
-  const services = document.querySelector('.sidebar__section:has(> .sidebar__title[data-section="services"])');
+  const educationLink = document.querySelector('a[href="https://edu.vc.ru"]');
+  const services = document.querySelector(':has(> [data-section="services"])');
   if (!hideAds || !educationLink || !services) return fail('missing ad setting or sidebar items');
   hideAds.checked = true; hideAds.onchange({target: hideAds});
   if (getComputedStyle(educationLink).display !== 'none' || getComputedStyle(services).display !== 'none') return fail('hide education and services with ads');
   hideAds.checked = false; hideAds.onchange({target: hideAds});
   if (getComputedStyle(educationLink).display === 'none' || getComputedStyle(services).display === 'none') return fail('show education and services with ads');
-  const links = [...document.querySelectorAll('.sidebar-item')];
+  const links = [...document.querySelector('[data-section="topics"]').parentElement.querySelectorAll('a[href]')];
   toggle.checked = true; toggle.onchange({target: toggle});
   let input = document.querySelector('.dtf-vm-topic-search');
   if (!input) return fail('enable');
