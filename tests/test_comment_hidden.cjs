@@ -1,27 +1,51 @@
-const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
+const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'dtf.user.js'), 'utf8');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtf-hidden-comments-'));
-const html = path.join(dir, 'games', '999-hidden.html');
+const source = fs.readFileSync(
+  path.join(__dirname, "..", "dtf.user.js"),
+  "utf8",
+);
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-hidden-comments-"));
+const html = path.join(dir, "games", "999-hidden.html");
 fs.mkdirSync(path.dirname(html));
-const detail = (id, date, text, user, media = []) => ({ status: 'ok', data: { id: String(id), post_id: '999', data: { date, text, user, media } } });
+const detail = (id, date, text, user, media = []) => ({
+  status: "ok",
+  data: { id: String(id), post_id: "999", data: { date, text, user, media } },
+});
 const users = {
-  10: { id: 10, name: 'Parent', avatar: 'parent-avatar' },
-  20: { id: 20, name: 'First hidden', avatar: 'first-avatar' },
-  21: { id: 21, name: 'Second hidden', avatar: 'second-avatar' },
-  30: { id: 30, name: 'Excluded hidden', avatar: 'excluded-avatar' },
-  40: { id: 40, name: 'Restored author', avatar: 'restored-avatar' },
+  10: { id: 10, name: "Parent", avatar: "parent-avatar" },
+  20: { id: 20, name: "First hidden", avatar: "first-avatar" },
+  21: { id: 21, name: "Second hidden", avatar: "second-avatar" },
+  30: { id: 30, name: "Excluded hidden", avatar: "excluded-avatar" },
+  40: { id: 40, name: "Restored author", avatar: "restored-avatar" },
 };
 const details = {
-  10: detail(10, 10, 'parent text', users[10]),
-  20: detail(20, 20, 'first text', users[20], [{ type: 'image', data: { uuid: 'image-id', width: 320, height: 200 } }]),
-  21: detail(21, 30, 'second text', users[21], [{ type: 'movie', data: { uuid: 'video-id', width: 320, height: 200, has_audio: true } }]),
-  30: detail(30, 15, 'should be filtered', users[30]),
-  40: detail(40, 40, 'restored removed text', users[40], [{ type: 'image', data: { uuid: 'restored-video', width: 960, height: 720, isVideo: true, has_audio: true } }]),
+  10: detail(10, 10, "parent text", users[10]),
+  20: detail(20, 20, "first text", users[20], [
+    { type: "image", data: { uuid: "image-id", width: 320, height: 200 } },
+  ]),
+  21: detail(21, 30, "second text", users[21], [
+    {
+      type: "movie",
+      data: { uuid: "video-id", width: 320, height: 200, has_audio: true },
+    },
+  ]),
+  30: detail(30, 15, "should be filtered", users[30]),
+  40: detail(40, 40, "restored removed text", users[40], [
+    {
+      type: "image",
+      data: {
+        uuid: "restored-video",
+        width: 960,
+        height: 720,
+        isVideo: true,
+        has_audio: true,
+      },
+    },
+  ]),
 };
 const fixture = `<!doctype html><meta charset="utf-8"><body>
 <div class="comments-header"><div class="dropdown"></div></div>
@@ -64,12 +88,25 @@ window.GM_xmlhttpRequest=({url,onload})=>{
 </script></body>`;
 fs.writeFileSync(html, fixture);
 try {
-  const result = spawnSync('/usr/bin/chromium', ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', `--user-data-dir=${path.join(dir, 'profile')}`, '--dump-dom', '--virtual-time-budget=6000', `file://${html}`], { encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(
+    "/usr/bin/chromium",
+    [
+      "--headless",
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      `--user-data-dir=${path.join(dir, "profile")}`,
+      "--dump-dom",
+      "--virtual-time-budget=6000",
+      `file://${html}`,
+    ],
+    { encoding: "utf8", timeout: 30000 },
+  );
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, result.stderr);
   const status = result.stdout.match(/data-result="([^"]+)"/);
-  assert.equal(status?.[1], 'PASS', status?.[1] || result.stderr);
-  console.log('OK: hidden comment order, author/reply links, dates, and media');
+  assert.equal(status?.[1], "PASS", status?.[1] || result.stderr);
+  console.log("OK: hidden comment order, author/reply links, dates, and media");
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }

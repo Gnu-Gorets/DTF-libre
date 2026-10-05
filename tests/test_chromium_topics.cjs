@@ -1,12 +1,15 @@
-const assert = require('node:assert/strict');
-const { spawnSync } = require('node:child_process');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
+const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
-const script = fs.readFileSync(path.join(__dirname, '..', 'dtf.user.js'), 'utf8');
-const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dtf-chromium-'));
-const html = path.join(dir, 'test.html');
+const script = fs.readFileSync(
+  path.join(__dirname, "..", "dtf.user.js"),
+  "utf8",
+);
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-chromium-"));
+const html = path.join(dir, "test.html");
 const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><aside class="sidebar"><section class="sidebar__section"><div class="sidebar__title" data-section="topics">Темы</div><div class="sidebar__section-content"><a class="sidebar-item" href="https://dtf.ru/games"><span class="sidebar-item__text">Игры</span></a><a class="sidebar-item" href="https://dtf.ru/cinema"><span class="sidebar-item__text">Кино</span></a><a class="sidebar-item" href="https://edu.vc.ru" target="_blank"><div class="sidebar-item__text"><span class="sidebar-item__label">Обучение <svg class="sidebar-item__trailing-icon"></svg></span></div></a></div></section><section class="sidebar__section"><button class="sidebar__title" data-section="services"><span>Сервисы</span></button><div class="sidebar__section-content"><a class="sidebar-item" href="/service">Сервис</a></div></section></aside><script>
 const values = new Map([['smallFixes', false]]);
 window.GM_getValue = (key, fallback) => values.has(key) ? values.get(key) : fallback;
@@ -90,11 +93,31 @@ setTimeout(() => {
 </script>`;
 fs.writeFileSync(html, fixture);
 try {
-  const result = spawnSync('/usr/bin/chromium', ['--headless', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--window-size=1920,1080', `--user-data-dir=${path.join(dir, 'profile')}`, '--dump-dom', '--virtual-time-budget=1000', `file://${html}`], { encoding: 'utf8', timeout: 30000 });
+  const result = spawnSync(
+    "/usr/bin/chromium",
+    [
+      "--headless",
+      "--no-sandbox",
+      "--disable-gpu",
+      "--disable-dev-shm-usage",
+      "--window-size=1920,1080",
+      `--user-data-dir=${path.join(dir, "profile")}`,
+      "--dump-dom",
+      "--virtual-time-budget=1000",
+      `file://${html}`,
+    ],
+    { encoding: "utf8", timeout: 30000 },
+  );
   assert.equal(result.error, undefined, result.error?.message);
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /data-result="PASS"/, result.stdout.slice(-500) + result.stderr);
-  console.log('OK: topic search filters case-insensitively and clears in clean Chromium profile');
+  assert.match(
+    result.stdout,
+    /data-result="PASS"/,
+    result.stdout.slice(-500) + result.stderr,
+  );
+  console.log(
+    "OK: topic search filters case-insensitively and clears in clean Chromium profile",
+  );
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }
