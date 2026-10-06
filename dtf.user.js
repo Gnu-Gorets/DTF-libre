@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.89
+// @version      0.0.90
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -2216,7 +2216,7 @@
       };
       requestPage();
     };
-    const setQuality = (enabled) => {
+    const setQuality = (enabled, galleryEnabled = false) => {
       document
         .querySelectorAll(
           ".block-wrapper--media .andropov-image, .block-wrapper--gallery .andropov-image",
@@ -2232,7 +2232,7 @@
             media.dataset.dtfQualityStyle === undefined
           ) return;
 
-          if (!enabled) {
+          if (!enabled && !(inGallery && galleryEnabled)) {
             if (media.dataset.dtfQualityStyle !== undefined) {
               media.setAttribute("style", media.dataset.dtfQualityStyle);
               delete media.dataset.dtfQualityStyle;
@@ -2272,12 +2272,14 @@
                     2560,
                     targetWidth * (descriptor.includes("2x") ? 2 : 1),
                   );
-                  const scaledUrl = url.replace(
-                    /(\/-\/scale_crop\/)(\d+)x(\d+)?(?=\/)/,
-                    (_, path, originalWidth, originalHeight) =>
-                      `${path}${width}x${originalHeight ? Math.round((originalHeight * width) / originalWidth) : ""}`,
-                  );
-                  return `${scaledUrl} ${descriptor.join(" ")}`.trim();
+                  const updatedUrl = inGallery && galleryEnabled
+                    ? url.replace(/\/-\/scale_crop\/\d+x(?:\d+)?(?=\/)/, "")
+                    : url.replace(
+                        /(\/-\/scale_crop\/)(\d+)x(\d+)?(?=\/)/,
+                        (_, path, originalWidth, originalHeight) =>
+                          `${path}${width}x${originalHeight ? Math.round((originalHeight * width) / originalWidth) : ""}`,
+                      );
+                  return `${updatedUrl} ${descriptor.join(" ")}`.trim();
                 })
                 .join(", ");
               if (updated !== original) node.setAttribute(attr, updated);
@@ -2403,7 +2405,10 @@
           );
         }
       });
-      setQuality(Boolean(get("quality", false)));
+      setQuality(
+        Boolean(get("quality", false)),
+        Boolean(get("classicGallery", false)),
+      );
       document.documentElement.classList.toggle(
         "dtf-vm-small-fixes",
         Boolean(get("smallFixes", false)),

@@ -25,10 +25,11 @@ const originalSrc = "https://img.test/-/scale_crop/800x450/";
 const originalSrcset = `${originalSrc}, https://img.test/-/scale_crop/1600x900/ 2x`;
 const image = makeNode({ src: originalSrc, srcset: originalSrcset });
 const pictureSource = makeNode({ srcset: originalSrcset });
-const originalStyle = "aspect-ratio: 1/1";
+const originalStyle = "aspect-ratio: 16/9";
+let inGallery = false;
 const media = {
-  closest: () => ({}),
-  style: { aspectRatio: "1/1", setProperty() {} },
+  closest: () => (inGallery ? {} : null),
+  style: { aspectRatio: "16/9", setProperty() {} },
   dataset: {},
   parentElement: { clientWidth: 1000 },
   attrs: { style: originalStyle },
@@ -88,4 +89,24 @@ assert.equal(
   writesBeforeHidden,
   "hidden post does not request scale_crop/0x",
 );
-console.log("OK: responsive URLs, restoration, idempotence, hidden-post guard");
+
+const uuid = "350de268-0468-54e4-8878-ef8c570a7fef";
+const gallerySrc = `https://img.test/${uuid}/-/scale_crop/280x280/`;
+const gallerySrcset = `https://img.test/${uuid}/-/scale_crop/280x280/-/format/webp/, https://img.test/${uuid}/-/scale_crop/560x560/-/format/webp/ 2x`;
+image.attrs.src = gallerySrc;
+image.attrs.srcset = gallerySrcset;
+pictureSource.attrs.srcset = gallerySrcset;
+inGallery = true;
+media.parentElement.clientWidth = 900;
+setQuality(false, true);
+assert.equal(image.attrs.src, `https://img.test/${uuid}/`);
+assert.equal(
+  image.attrs.srcset,
+  `https://img.test/${uuid}/-/format/webp/, https://img.test/${uuid}/-/format/webp/ 2x`,
+);
+assert.equal(pictureSource.attrs.srcset, image.attrs.srcset);
+setQuality(false, false);
+assert.equal(image.attrs.src, gallerySrc);
+assert.equal(image.attrs.srcset, gallerySrcset);
+assert.equal(pictureSource.attrs.srcset, gallerySrcset);
+console.log("OK: high-resolution gallery originals, srcset, quality transforms, restoration");
