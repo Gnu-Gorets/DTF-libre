@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.84
+// @version      0.0.85
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -598,10 +598,11 @@
     .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; justify-content: center !important; }
     .dtf-vm-centered .block-wrapper--media .andropov-media { margin-inline: auto !important; }
     .dtf-vm-centered .block-wrapper--gallery .mvqlyolt { justify-content: center; }
-    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
-    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * { position: relative; min-width: 0; width: auto !important; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt { display: flex !important; flex-wrap: wrap; justify-content: center; gap: 2px; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * { position: relative; display: flex; flex: 0 0 calc((100% - 4px) / 3); min-width: 0; width: auto !important; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-hidden] { display: none !important; }
-    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-image { width: 100% !important; height: auto !important; max-width: 100% !important; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-image { flex: 1; width: 100% !important; height: 100% !important; max-width: 100% !important; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-image img { width: 100% !important; height: 100% !important; object-fit: cover; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-more] .andropov-media { opacity: 0; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-more]::after { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: #0009; border-radius: 10px; content: attr(data-dtf-gallery-more); font-size: clamp(24px, 5vw, 48px); font-weight: 600; pointer-events: none; }
     .content-nsfw { display: none !important; }
@@ -2215,16 +2216,24 @@
       };
       requestPage();
     };
-    const setQuality = (enabled) => {
+    const setQuality = (enabled, galleryEnabled = false) => {
       document
-        .querySelectorAll(".block-wrapper--media .andropov-image")
+        .querySelectorAll(
+          ".block-wrapper--media .andropov-image, .block-wrapper--gallery .andropov-image",
+        )
         .forEach((media) => {
+          const inGallery = Boolean(media.closest(".block-wrapper--gallery"));
           const [w, h] = media.style.aspectRatio.split("/").map(Number);
           const rect = media.getBoundingClientRect();
           const ratio = h ? w / h : w || rect.width / rect.height;
-          if (ratio <= 1 && media.dataset.dtfQualityStyle === undefined) return;
+          if (
+            !inGallery &&
+            ratio <= 1 &&
+            media.dataset.dtfQualityStyle === undefined
+          )
+            return;
 
-          if (!enabled) {
+          if (!enabled && !(inGallery && galleryEnabled)) {
             if (media.dataset.dtfQualityStyle !== undefined) {
               media.setAttribute("style", media.dataset.dtfQualityStyle);
               delete media.dataset.dtfQualityStyle;
@@ -2246,7 +2255,7 @@
             2560,
             Math.ceil(media.parentElement.clientWidth),
           );
-          if (targetWidth <= 0) return;
+          if (targetWidth <= 0 && !(inGallery && galleryEnabled)) return;
           if (media.dataset.dtfQualityStyle === undefined)
             media.dataset.dtfQualityStyle = media.getAttribute("style") || "";
           media.style.setProperty("width", "100%", "important");
@@ -2264,7 +2273,15 @@
                     2560,
                     targetWidth * (descriptor.includes("2x") ? 2 : 1),
                   );
-                  return `${url.replace(/(\/-\/scale_crop\/)\d+x(?=\/)/, `$1${width}x`)} ${descriptor.join(" ")}`.trim();
+                  const updatedUrl =
+                    inGallery && galleryEnabled
+                      ? url.replace(/\/-\/scale_crop\/\d+x(?:\d+)?(?=\/)/, "")
+                      : url.replace(
+                          /(\/-\/scale_crop\/)(\d+)x(\d+)?(?=\/)/,
+                          (_, path, originalWidth, originalHeight) =>
+                            `${path}${width}x${originalHeight ? Math.round((originalHeight * width) / originalWidth) : ""}`,
+                        );
+                  return `${updatedUrl} ${descriptor.join(" ")}`.trim();
                 })
                 .join(", ");
               if (updated !== original) node.setAttribute(attr, updated);
@@ -2390,7 +2407,10 @@
           );
         }
       });
-      setQuality(Boolean(get("quality", false)));
+      setQuality(
+        Boolean(get("quality", false)),
+        Boolean(get("classicGallery", false)),
+      );
       document.documentElement.classList.toggle(
         "dtf-vm-small-fixes",
         Boolean(get("smallFixes", false)),
