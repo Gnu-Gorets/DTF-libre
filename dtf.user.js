@@ -1585,11 +1585,11 @@
           const videoMedia = media.querySelector(":scope > .andropov-video");
           const gif = Boolean(
             videoMedia &&
-              (audio === "0" ||
-                (!audio &&
-                  videoMedia.matches(
-                    '[data-loaded="true"]:not(:has(.andropov-video-player--with-controls))',
-                  ))),
+            (audio === "0" ||
+              (!audio &&
+                videoMedia.matches(
+                  '[data-loaded="true"]:not(:has(.andropov-video-player--with-controls))',
+                ))),
           );
           const externalVideo = media.querySelector(
             ":scope > .andropov-external-video",
