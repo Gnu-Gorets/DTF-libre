@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.83
+// @version      0.0.84
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -598,7 +598,7 @@
     .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; justify-content: center !important; }
     .dtf-vm-centered .block-wrapper--media .andropov-media { margin-inline: auto !important; }
     .dtf-vm-centered .block-wrapper--gallery .mvqlyolt { justify-content: center; }
-    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * { position: relative; min-width: 0; width: auto !important; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-hidden] { display: none !important; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-image { width: 100% !important; height: auto !important; max-width: 100% !important; }
@@ -2274,17 +2274,21 @@
     };
 
     const syncClassicGalleries = (enabled, limit) => {
-      document.querySelectorAll(".block-wrapper--gallery .mvqlyolt").forEach((gallery) => {
-        const more = gallery.children.length > limit ? gallery.children.length - limit : 0;
-        [...gallery.children].forEach((slot, index) => {
-          if (enabled && index > limit)
-            slot.dataset.dtfGalleryHidden = "";
-          else delete slot.dataset.dtfGalleryHidden;
-          if (enabled && index === limit && more)
-            slot.dataset.dtfGalleryMore = `+${more}`;
-          else delete slot.dataset.dtfGalleryMore;
+      document
+        .querySelectorAll(".block-wrapper--gallery .mvqlyolt")
+        .forEach((gallery) => {
+          const more =
+            gallery.children.length > limit
+              ? gallery.children.length - limit
+              : 0;
+          [...gallery.children].forEach((slot, index) => {
+            if (enabled && index > limit) slot.dataset.dtfGalleryHidden = "";
+            else delete slot.dataset.dtfGalleryHidden;
+            if (enabled && index === limit && more)
+              slot.dataset.dtfGalleryMore = `+${more}`;
+            else delete slot.dataset.dtfGalleryMore;
+          });
         });
-      });
     };
 
     const syncVideos = () => {

@@ -31,6 +31,13 @@ assert.equal(galleries[3].children[9].dataset.dtfGalleryHidden, "");
 context.syncClassicGalleries(false, 8);
 assert.equal(galleries[3].children[8].dataset.dtfGalleryMore, undefined);
 assert.equal(galleries[3].children[9].dataset.dtfGalleryHidden, undefined);
-assert.match(source, /name="galleryPreviewCount" type="range" min="4" max="8" step="1"/);
+assert.match(
+  source,
+  /name="galleryPreviewCount" type="range" min="4" max="8" step="1"/,
+);
+assert.match(
+  source,
+  /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: 2px/,
+);
 assert.match(source, /classicGallery: \["galleryPreviewCount"\]/);
 console.log("OK: classic gallery limits, overflow tile, and disabled cleanup");
