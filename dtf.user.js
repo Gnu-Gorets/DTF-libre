@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.90
+// @version      0.0.81
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -2230,7 +2230,8 @@
             !inGallery &&
             ratio <= 1 &&
             media.dataset.dtfQualityStyle === undefined
-          ) return;
+          )
+            return;
 
           if (!enabled && !(inGallery && galleryEnabled)) {
             if (media.dataset.dtfQualityStyle !== undefined) {
@@ -2272,13 +2273,14 @@
                     2560,
                     targetWidth * (descriptor.includes("2x") ? 2 : 1),
                   );
-                  const updatedUrl = inGallery && galleryEnabled
-                    ? url.replace(/\/-\/scale_crop\/\d+x(?:\d+)?(?=\/)/, "")
-                    : url.replace(
-                        /(\/-\/scale_crop\/)(\d+)x(\d+)?(?=\/)/,
-                        (_, path, originalWidth, originalHeight) =>
-                          `${path}${width}x${originalHeight ? Math.round((originalHeight * width) / originalWidth) : ""}`,
-                      );
+                  const updatedUrl =
+                    inGallery && galleryEnabled
+                      ? url.replace(/\/-\/scale_crop\/\d+x(?:\d+)?(?=\/)/, "")
+                      : url.replace(
+                          /(\/-\/scale_crop\/)(\d+)x(\d+)?(?=\/)/,
+                          (_, path, originalWidth, originalHeight) =>
+                            `${path}${width}x${originalHeight ? Math.round((originalHeight * width) / originalWidth) : ""}`,
+                        );
                   return `${updatedUrl} ${descriptor.join(" ")}`.trim();
                 })
                 .join(", ");
