@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.84
+// @version      0.0.85
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -598,8 +598,8 @@
     .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; justify-content: center !important; }
     .dtf-vm-centered .block-wrapper--media .andropov-media { margin-inline: auto !important; }
     .dtf-vm-centered .block-wrapper--gallery .mvqlyolt { justify-content: center; }
-    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
-    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * { position: relative; min-width: 0; width: auto !important; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt { display: flex !important; flex-wrap: wrap; justify-content: center; gap: 2px; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * { position: relative; flex: 0 0 calc((100% - 4px) / 3); min-width: 0; width: auto !important; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-hidden] { display: none !important; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-image { width: 100% !important; height: auto !important; max-width: 100% !important; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-more] .andropov-media { opacity: 0; }

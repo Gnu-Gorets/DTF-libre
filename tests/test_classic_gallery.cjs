@@ -37,7 +37,8 @@ assert.match(
 );
 assert.match(
   source,
-  /grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: 2px/,
+  /display: flex !important; flex-wrap: wrap; justify-content: center; gap: 2px/,
 );
+assert.match(source, /flex: 0 0 calc\(\(100% - 4px\) \/ 3\)/);
 assert.match(source, /classicGallery: \["galleryPreviewCount"\]/);
 console.log("OK: classic gallery limits, overflow tile, and disabled cleanup");
