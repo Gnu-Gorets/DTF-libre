@@ -2255,7 +2255,7 @@
             2560,
             Math.ceil(media.parentElement.clientWidth),
           );
-          if (targetWidth <= 0) return;
+          if (targetWidth <= 0 && !(inGallery && galleryEnabled)) return;
           if (media.dataset.dtfQualityStyle === undefined)
             media.dataset.dtfQualityStyle = media.getAttribute("style") || "";
           media.style.setProperty("width", "100%", "important");

@@ -97,7 +97,7 @@ image.attrs.src = gallerySrc;
 image.attrs.srcset = gallerySrcset;
 pictureSource.attrs.srcset = gallerySrcset;
 inGallery = true;
-media.parentElement.clientWidth = 900;
+media.parentElement.clientWidth = 0;
 setQuality(false, true);
 assert.equal(image.attrs.src, `https://img.test/${uuid}/`);
 assert.equal(
