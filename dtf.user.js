@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.85
+// @version      0.0.86
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -595,7 +595,7 @@
     html.dtf-vm-stretch-right .layout:has(.view) { --layout-right-aside-width: 0px !important; }
     html.dtf-vm-stretch-right .layout:has(.entry) { --layout-max-content-width: var(--dtf-feed-width) !important; --layout-max-width: var(--dtf-layout-width) !important; --layout-right-aside-width: 0px !important; }
     .feed-page:has(.dtf-vm-minimized-post) .content-list__loader { display: block !important; box-sizing: border-box !important; width: 1px !important; height: 1px !important; min-height: 1px !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
-    .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; justify-content: center !important; }
+    .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; flex-direction: column !important; align-items: center !important; }
     .dtf-vm-centered .block-wrapper--media .andropov-media { margin-inline: auto !important; }
     .dtf-vm-centered .block-wrapper--gallery .mvqlyolt { justify-content: center; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt { display: flex !important; flex-wrap: wrap; justify-content: center; gap: 2px; }

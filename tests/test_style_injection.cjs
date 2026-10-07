@@ -29,6 +29,11 @@ for (const [option, section] of Object.entries({
     `${option} selector ignores changing DTF classes`,
   );
 }
+assert.match(
+  source,
+  /\.dtf-vm-centered \.block-wrapper--media \.block-media \{[^}]*flex-direction: column !important;[^}]*align-items: center !important;/,
+  "centered media keeps caption below image",
+);
 assert.match(source, /\.dtf-vm-topic-extras > a \{ display: flex;/);
 assert.match(source, /\.dtf-vm-topic-extras > a img \{ flex: 0 0 32px;/);
 const start = source.indexOf("  const attachStyles =");
