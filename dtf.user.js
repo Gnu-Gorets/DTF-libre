@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.90
+// @version      0.0.91
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -2815,21 +2815,40 @@
         };
         const renderTopicManager = () => {
           const topics = new Map();
-          const source = topicCatalog.length
-            ? catalogItems()
-            : [...(topicSection()?.querySelectorAll(":scope > a[href]") || [])].map(
-                (item) => ({
-                  href: item.href,
-                  name:
-                    item.querySelector(".sidebar-item__text")?.textContent.trim() ||
-                    item.textContent.trim(),
-                }),
-              );
-          source.forEach((topic) =>
-            topics.set(topicPath(topic.href), topic),
-          );
+          const sidebarTopics = [
+            ...(topicSection()?.querySelectorAll(":scope > a[href]") || []),
+          ]
+            .filter((item) => item.target !== "_blank")
+            .map((item) => ({
+              href: item.href,
+              name:
+                item.querySelector(".sidebar-item__text")?.textContent.trim() ||
+                item.textContent.trim(),
+            }));
+          [
+            ...catalogItems(),
+            ...(Array.isArray(subscribedTopics) ? subscribedTopics : []),
+            ...sidebarTopics,
+          ].forEach((topic) => {
+            if (typeof topic?.href !== "string" || typeof topic?.name !== "string")
+              return;
+            if (
+              [...topics.values()].some(
+                (existing) =>
+                  topicNameKey(existing.name) === topicNameKey(topic.name),
+              )
+            )
+              return;
+            topics.set(topicPath(topic.href), topic);
+          });
           for (const [path, name] of hiddenTopics) {
-            if (!topics.has(path)) topics.set(path, { href: path, name });
+            if (
+              !topics.has(path) &&
+              ![...topics.values()].some(
+                (topic) => topicNameKey(topic.name) === topicNameKey(name),
+              )
+            )
+              topics.set(path, { href: path, name });
           }
           list.replaceChildren();
           [...topics]
@@ -2843,11 +2862,17 @@
               const label = document.createElement("label");
               const checkbox = document.createElement("input");
               checkbox.type = "checkbox";
-              checkbox.checked = !hiddenTopics.has(path);
+              checkbox.checked = !isTopicHidden(topic);
               checkbox.setAttribute("aria-label", topic.name);
               checkbox.onchange = () => {
-                if (checkbox.checked) hiddenTopics.delete(path);
-                else hiddenTopics.set(path, topic.name);
+                for (const [hiddenPath, hiddenName] of hiddenTopics) {
+                  if (
+                    hiddenPath === path ||
+                    topicNameKey(hiddenName) === topicNameKey(topic.name)
+                  )
+                    hiddenTopics.delete(hiddenPath);
+                }
+                if (!checkbox.checked) hiddenTopics.set(path, topic.name);
                 saveHiddenTopics();
                 document.querySelector(".dtf-vm-topic-extras")?.remove();
                 renderTopics();
