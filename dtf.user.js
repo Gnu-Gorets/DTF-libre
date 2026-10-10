@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.89
+// @version      0.0.90
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -1866,11 +1866,20 @@
         )
         .map((topic) => [topicPath(topic.path), topic.name]),
     );
-    const saveHiddenTopics = () =>
+    const topicNameKey = (name) => name.trim().toLocaleLowerCase();
+    let hiddenTopicNames = new Set(
+      [...hiddenTopics.values()].map(topicNameKey),
+    );
+    const isTopicHidden = (topic) =>
+      hiddenTopics.has(topicPath(topic.href)) ||
+      hiddenTopicNames.has(topicNameKey(topic.name));
+    const saveHiddenTopics = () => {
+      hiddenTopicNames = new Set([...hiddenTopics.values()].map(topicNameKey));
       set(
         "hiddenTopics",
         [...hiddenTopics].map(([path, name]) => ({ path, name })),
       );
+    };
     let topicsExpanded = false;
     let topicSearch = "";
     let topicManagerRefresh = null;
@@ -2029,7 +2038,10 @@
           const name =
             item.querySelector(".sidebar-item__text")?.textContent.trim() ||
             item.textContent.trim();
-          item.classList.toggle("dtf-vm-topic-hidden", hiddenTopics.has(path));
+          item.classList.toggle(
+            "dtf-vm-topic-hidden",
+            hiddenTopics.has(path) || hiddenTopicNames.has(topicNameKey(name)),
+          );
           item.classList.toggle(
             "dtf-vm-topic-search-hidden",
             Boolean(topicSearch) && !name.toLocaleLowerCase().includes(topicSearch),
@@ -2130,7 +2142,7 @@
         items = onlySubscribed ? source : catalogItems();
       }
       items = applyTopicOrder(
-        items.filter((item) => !hiddenTopics.has(topicPath(item.href))),
+        items.filter((item) => !isTopicHidden(item)),
       );
       const limit = Math.max(
         5,

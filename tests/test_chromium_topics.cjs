@@ -10,8 +10,8 @@ const script = fs.readFileSync(
 );
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-chromium-"));
 const html = path.join(dir, "test.html");
-const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><aside class="random-nav"><section class="random-group"><div class="random-heading" data-section="topics">Темы</div><div class="random-links"><a class="random-link" href="https://dtf.ru/games"><span>Игры</span></a><a class="random-link" href="https://dtf.ru/cinema"><span>Кино</span></a><a class="random-link" href="https://edu.vc.ru" target="_blank"><div><span>Обучение <svg></svg></span></div></a></div></section><section class="random-group"><button class="random-heading" data-section="services"><span>Сервисы</span></button><div class="random-links"><a class="random-link" href="/service">Сервис</a></div></section></aside><script>
-const values = new Map([['smallFixes', false], ['hiddenTopics', [{path:'/stored-topic',name:'Saved topic'}]], ['topicCatalogCache', [{url:'https://dtf.ru/games',name:'Игры'}, {url:'https://dtf.ru/cinema',name:'Кино'}]], ['subscribedTopics', [{href:'/games',name:'Игры'}]]]);
+const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><aside class="random-nav"><section class="random-group"><div class="random-heading" data-section="topics">Темы</div><div class="random-links"><a class="random-link" href="https://dtf.ru/games"><span>Игры</span></a><a class="random-link" href="https://dtf.ru/cinema"><span>Кино</span></a><a class="random-link" href="https://dtf.ru/iron"><span>Железо</span></a><a class="random-link" href="https://edu.vc.ru" target="_blank"><div><span>Обучение <svg></svg></span></div></a></div></section><section class="random-group"><button class="random-heading" data-section="services"><span>Сервисы</span></button><div class="random-links"><a class="random-link" href="/service">Сервис</a></div></section></aside><script>
+const values = new Map([['smallFixes', false], ['hiddenTopics', [{path:'/stored-topic',name:'Saved topic'}]], ['topicCatalogCache', [{url:'https://dtf.ru/games',name:'Игры'}, {url:'https://dtf.ru/cinema',name:'Кино'}, {url:'https://dtf.ru/iron',name:'Железо'}]], ['subscribedTopics', [{href:'/games',name:'Игры'}, {href:'/hardware',name:'Железо'}]]]);
 window.GM_getValue = (key, fallback) => values.has(key) ? values.get(key) : fallback;
 window.GM_setValue = (key, value) => values.set(key, value);
 window.GM_addValueChangeListener = () => 1;
@@ -82,6 +82,12 @@ setTimeout(() => {
   managerSearch.value = 'КИНО'; managerSearch.dispatchEvent(new Event('input', {bubbles:true}));
   if (manager.querySelectorAll('.dtf-vm-topic-manager-list label').length !== 1) return fail('filter topic list by query');
   managerSearch.value = ''; managerSearch.dispatchEvent(new Event('input', {bubbles:true}));
+  const ironLink = document.querySelector('a[href="https://dtf.ru/iron"]');
+  const nativeIronToggle = [...manager.querySelectorAll('label')].find(label => label.textContent.trim() === 'Железо')?.querySelector('input');
+  nativeIronToggle.checked = false; nativeIronToggle.onchange();
+  if (!ironLink.classList.contains('dtf-vm-topic-hidden')) return fail('hide native sidebar topic');
+  nativeIronToggle.checked = true; nativeIronToggle.onchange();
+  if (ironLink.classList.contains('dtf-vm-topic-hidden')) return fail('restore native sidebar topic');
   let gamesToggle = [...manager.querySelectorAll('label')].find(label => label.textContent.trim() === 'Игры')?.querySelector('input');
   if (!gamesToggle?.checked) return fail('topic is not initially visible');
   gamesToggle.checked = false; gamesToggle.onchange();
@@ -100,17 +106,21 @@ setTimeout(() => {
   manager = document.querySelector('.dtf-vm-topic-manager-overlay');
   gamesToggle = [...manager.querySelectorAll('label')].find(label => label.textContent.trim() === 'Игры')?.querySelector('input');
   gamesToggle.checked = false; gamesToggle.onchange();
-  if (document.querySelector('.dtf-vm-topic-extras a[href="/games"]')) return fail('hide topic from full catalog');
+  const ironToggle = [...manager.querySelectorAll('label')].find(label => label.textContent.trim() === 'Железо')?.querySelector('input');
+  ironToggle.checked = false; ironToggle.onchange();
+  if (document.querySelector('.dtf-vm-topic-extras a[href="/games"]') || document.querySelector('.dtf-vm-topic-extras a[href="/iron"]')) return fail('hide topic from full catalog');
   document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
   const subscribed = document.querySelector('.dtf-vm-dialog [name=onlySubscribedTopics]');
   subscribed.checked = true; subscribed.onchange({target: subscribed});
-  if (document.querySelector('.dtf-vm-topic-extras a[href="/games"]')) return fail('hide topic from subscriptions');
+  if (document.querySelector('.dtf-vm-topic-extras a[href="/games"]') || document.querySelector('.dtf-vm-topic-extras a[href="/hardware"]')) return fail('hide topic from subscriptions');
   manageTopicsButton.click();
   manager = document.querySelector('.dtf-vm-topic-manager-overlay');
   gamesToggle = [...manager.querySelectorAll('label')].find(label => label.textContent.trim() === 'Игры')?.querySelector('input');
-  if (gamesToggle.checked) return fail('hidden topic toggle missing in subscriptions');
+  const subscribedIronToggle = [...manager.querySelectorAll('label')].find(label => label.textContent.trim() === 'Железо')?.querySelector('input');
+  if (gamesToggle.checked || subscribedIronToggle.checked) return fail('hidden topic toggle missing in subscriptions');
   gamesToggle.checked = true; gamesToggle.onchange();
-  if (!document.querySelector('.dtf-vm-topic-extras a[href="/games"]')) return fail('show topic from subscriptions');
+  subscribedIronToggle.checked = true; subscribedIronToggle.onchange();
+  if (!document.querySelector('.dtf-vm-topic-extras a[href="/games"]') || !document.querySelector('.dtf-vm-topic-extras a[href="/hardware"]')) return fail('show topic from subscriptions');
   const right = document.querySelector('.dtf-vm-dialog [name=hideRightSidebar]');
   const live = document.querySelector('.dtf-vm-dialog [name=livePanel]');
   right.checked = true; right.onchange({target: right});
@@ -165,7 +175,7 @@ try {
   assert.match(
     result.stdout,
     /data-result="PASS"/,
-    result.stdout.slice(-500) + result.stderr,
+    `Chromium fixture result: ${result.stdout.match(/data-result="([^"]+)/)?.[1] || "missing"}\n${result.stderr.slice(-500)}`,
   );
   console.log(
     "OK: topic search, visibility manager, and Live reconnect lifecycle in clean Chromium profile",
