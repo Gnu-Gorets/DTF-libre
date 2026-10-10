@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.92
+// @version      0.0.95
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -22,6 +22,32 @@
 
   const get = (key, fallback) => GM_getValue(key, fallback);
   const set = (key, value) => GM_setValue(key, value);
+  const hashtagModes = () => {
+    const modes = get("hashtagModes", {});
+    return modes && typeof modes === "object" && !Array.isArray(modes)
+      ? modes
+      : {};
+  };
+  const hashtagsIn = (text) =>
+    [...text.matchAll(/#([\p{L}\p{N}_-]+)/gu)].map((match) =>
+      match[1].toLocaleLowerCase(),
+    );
+  const syncHashtagCard = (card) => {
+    if (!card.isConnected || card.closest(".entry")) return;
+    const modes = hashtagModes();
+    const include = Object.keys(modes).filter((tag) => modes[tag] === "include");
+    const exclude = Object.keys(modes).filter((tag) => modes[tag] === "exclude");
+    const tags = new Set(hashtagsIn(card.textContent));
+    card.classList.toggle(
+      "dtf-vm-hashtag-hidden",
+      (include.length > 0 &&
+        tags.size > 0 &&
+        !include.some((tag) => tags.has(tag))) ||
+        exclude.some((tag) => tags.has(tag)),
+    );
+  };
+  const syncHashtagCards = () =>
+    document.querySelectorAll(".content").forEach(syncHashtagCard);
   const page = unsafeWindow;
   let plusWasEnabled = false;
   const syncPlus = (notify = false) => {
@@ -609,6 +635,7 @@
     html.dtf-vm-disable-spoiler-blur .spoiler { display: none !important; }
     .dtf-vm-centered .content__blocks img, .dtf-vm-centered .content__blocks video { display: block; max-width: 100%; height: auto; margin: 0 auto; }
     .dtf-vm-centered .andropov-video-player:fullscreen video, .dtf-vm-centered .andropov-video-player:-moz-full-screen video { height: 100% !important; }
+    .dtf-vm-hashtag-hidden { display: none !important; }
     .dtf-vm-minimized-post .content__blocks, .dtf-vm-minimized-post .content__read-more, .dtf-vm-minimized-post .content-comment { display: none !important; }
     .dtf-vm-minimized-post .content-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dtf-vm-viewed-button { display: flex; align-items: center; order: -1; padding: 0; color: var(--theme-color-text-primary); background: var(--theme-color-button-minimal); border: 0; border-radius: 10px; cursor: pointer; }
@@ -675,6 +702,11 @@
     .dtf-vm-topic-manager-list { max-height: min(65vh, 700px); overflow: auto; }
     .dtf-vm-topic-manager-list label { display: flex; align-items: center; gap: 8px; }
     .dtf-vm-topic-manager-list input { flex: 0 0 auto; }
+    .dtf-vm-hashtag-status { margin: 0 0 6px; color: #aeb4c0; font-size: 12px; }
+    .dtf-vm-hashtag-manager-list { max-height: min(65vh, 700px); overflow: auto; }
+    .dtf-vm-hashtag-manager-list label { display: flex; align-items: center; gap: 8px; }
+    .dtf-vm-hashtag-manager-list select { flex: 0 0 auto; margin-left: auto; padding: 5px 8px; color: inherit; background: #202329; border: 1px solid #454a53; border-radius: 6px; }
+    .dtf-vm-manage-hashtags { margin-top: 4px; padding: 8px 12px; color: #d7dbe2; background: #34363b; border: 1px solid #50535a; border-radius: 6px; font-size: 13px; cursor: pointer; }
     .dtf-vm-topic-extras > a { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 8px; color: inherit; text-decoration: none; }
     .dtf-vm-topic-extras > a img { flex: 0 0 32px; width: 32px; height: 32px; object-fit: cover; border-radius: 50%; }
     .dtf-vm-topic-original { display: none !important; }
@@ -2384,6 +2416,7 @@
           icon.setAttribute("xlink:href", href);
         });
       syncVideos();
+      syncHashtagCards();
       syncClassicGalleries(
         Boolean(get("classicGallery", false)),
         Math.min(8, Math.max(4, Number(get("galleryPreviewCount", 4)) || 4)),
@@ -2492,7 +2525,7 @@
       );
       const overlay = document.createElement("div");
       overlay.className = "dtf-vm-overlay";
-      overlay.innerHTML = `<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-title">Настройки</h2><div class="dtf-vm-settings-grid"><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Лента и изображения</h3><label>Ширина ленты: <output>${width}%</output><input name="width" type="range" min="50" max="100" step="5" value="${width}"><small class="dtf-vm-hint">Работает при ширине окна от 925 px.</small></label><label><input name="centered" type="checkbox" ${get("centered", false) ? "checked" : ""}> Центрировать изображения</label><label><input name="classicGallery" type="checkbox" ${get("classicGallery", false) ? "checked" : ""}> Классическая галерея<small class="dtf-vm-hint">Показывает галерею сеткой.</small></label><label class="dtf-vm-subsetting">Изображений до 4–8: <output>${galleryPreviewCount}</output><input name="galleryPreviewCount" type="range" min="4" max="8" step="1" value="${galleryPreviewCount}"></label><label><input name="disableSpoilerBlur" type="checkbox" ${get("disableSpoilerBlur", false) ? "checked" : ""}> Отключить размытие спойлеров</label><label><input name="quality" type="checkbox" ${get("quality", false) ? "checked" : ""}> Повысить качество</label><label><input name="pauseVideosOnScroll" type="checkbox" ${get("pauseVideosOnScroll", false) ? "checked" : ""}> Пауза при скролле<small class="dtf-vm-hint">Ставит видео на паузу, когда оно выходит из области видимости.</small></label><label><input name="pauseVideosByDefault" type="checkbox" ${get("pauseVideosByDefault", false) ? "checked" : ""}> Пауза по умолчанию<small class="dtf-vm-hint">Ставит новые видео на паузу, чтобы они не запускались сами.</small></label><label class="dtf-vm-dependent"><input name="stretchRight" type="checkbox" ${get("stretchRight", false) ? "checked" : ""}> Растянуть вправо<small class="dtf-vm-hint">Использовать место скрытой правой панели.</small></label><label><input name="hideViewedPosts" type="checkbox" ${get("hideViewedPosts", false) ? "checked" : ""}> Скрывать просмотренное<small class="dtf-vm-hint">Автоматически сворачивать просмотренные посты.</small></label><label class="dtf-vm-subsetting"><input name="showHideButton" type="checkbox" ${get("showHideButton", false) ? "checked" : ""}> Кнопки управления<small class="dtf-vm-hint">Добавить кнопки показать/скрыть на посты.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Шапка</h3><label><input name="headerWidth" type="checkbox" ${get("headerWidth", false) ? "checked" : ""}> Подогнать шапку под ширину ленты</label><label><input name="plainHeaderSearch" type="checkbox" ${get("plainHeaderSearch", false) ? "checked" : ""}> Лупа без звёздочки</label><label><input name="hideDonationsMenu" type="checkbox" ${get("hideDonationsMenu", false) ? "checked" : ""}> Скрыть «Донаты» в меню профиля</label><label><input name="hidePlusMenu" type="checkbox" ${get("hidePlusMenu", false) ? "checked" : ""}> Скрыть «Подписка Plus» в меню профиля</label></div><div class="dtf-vm-section"><h3>Интерфейс</h3><label><input name="backToTop" type="checkbox" ${get("backToTop", false) ? "checked" : ""}> Кнопка «Наверх»</label><label><input name="smallFixes" type="checkbox" ${get("smallFixes", false) ? "checked" : ""}> Улучшения интерфейса<small class="dtf-vm-hint">Добавляет темы и меняет поле комментария.</small></label></div><div class="dtf-vm-section"><h3>Комментарии</h3><label><input name="expandComments" type="checkbox" ${get("expandComments", true) ? "checked" : ""}> Раскрывать комментарии<small class="dtf-vm-hint">Автоматически раскрывает свернутый список комментариев.</small></label><label class="dtf-vm-subsetting"><input name="expandAllBranches" type="checkbox" ${get("expandAllBranches", false) ? "checked" : ""}> Раскрывать ответы<small class="dtf-vm-hint">Автоматически раскрывает ответы во всех ветках. На длинных обсуждениях может замедлить страницу.</small></label><label class="dtf-vm-subsetting"><input name="skipHiddenComments" type="checkbox" ${get("skipHiddenComments", true) ? "checked" : ""}> Не раскрывать скрытые комментарии</label><label><input name="showRemovedComments" type="checkbox" ${get("showRemovedComments", true) ? "checked" : ""}> Показывать удалённые комментарии</label><label class="dtf-vm-subsetting"><input name="showCommentEdits" type="checkbox" ${get("showCommentEdits", true) ? "checked" : ""}> Показывать историю изменений</label><label class="dtf-vm-subsetting"><input name="showHiddenComments" type="checkbox" ${get("showHiddenComments", true) ? "checked" : ""}> Показывать комментарии, скрытые модерацией</label><label><input name="hideCommentMedia" type="checkbox" ${get("hideCommentMedia", false) ? "checked" : ""}> Скрывать вложения</label><label class="dtf-vm-subsetting"><input name="hideCommentGifs" type="checkbox" ${get("hideCommentGifs", false) ? "checked" : ""}> Скрывать GIF</label><label class="dtf-vm-subsetting"><input name="hideCommentImages" type="checkbox" ${get("hideCommentImages", false) ? "checked" : ""}> Скрывать изображения</label><label class="dtf-vm-subsetting"><input name="hideCommentVideos" type="checkbox" ${get("hideCommentVideos", false) ? "checked" : ""}> Скрывать видео</label><label class="dtf-vm-subsetting"><input name="showMediaRestore" type="checkbox" ${get("showMediaRestore", true) ? "checked" : ""}> Кнопка «Показать»</label><label><input name="showNoCommentIcon" type="checkbox" ${get("showNoCommentIcon", true) ? "checked" : ""}> Показывать, почему нельзя комментировать</label><label><input name="enableCommentQuote" type="checkbox" ${get("enableCommentQuote", true) ? "checked" : ""}> Добавлять цитату в комментарий</label><label class="dtf-vm-subsetting"><input name="quoteMoveTo" type="checkbox" ${get("quoteMoveTo", false) ? "checked" : ""}> Кнопка перехода к полю комментария</label></div><div class="dtf-vm-section"><h3>Правая панель</h3><label><input name="hideRightSidebar" type="checkbox" ${get("hideRightSidebar", false) ? "checked" : ""}> Скрыть «Популярные комментарии»</label><label class="dtf-vm-dependent"><input name="livePanel" type="checkbox" ${get("livePanel", false) ? "checked" : ""}> Live-панель<small class="dtf-vm-hint">Показывает ленту с последними комментариями.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Темы</h3><label><input name="topicSearchEnabled" type="checkbox" ${get("topicSearchEnabled", false) ? "checked" : ""}> Поиск по темам</label><label><input name="onlySubscribedTopics" type="checkbox" ${get("onlySubscribedTopics", false) ? "checked" : ""}> Показывать только темы из моих подписок</label><label>Тем до «Показать все»: <output>${topicLimit}</output><input name="topicLimit" type="range" min="5" max="${topicLimitMax}" step="1" value="${topicLimit}"></label><label><input name="sortTopics" type="checkbox" ${get("sortTopics", false) ? "checked" : ""}> Сортировать темы: EN, затем RU</label><label><input name="reorderTopics" type="checkbox" ${get("reorderTopics", false) ? "checked" : ""}> Менять порядок тем<small class="dtf-vm-hint">Перетаскивайте темы в списке слева.</small></label><button class="dtf-vm-reset-topics" type="button">Сбросить сохранённый порядок</button><button class="dtf-vm-manage-hidden-topics" type="button">Показать/скрыть темы</button></div><div class="dtf-vm-section"><h3>Разное</h3><label><input name="hidePlusAds" type="checkbox" ${get("hidePlusAds", false) ? "checked" : ""}> Скрывать рекламу<small class="dtf-vm-hint">Скрывает рекламные баннеры, промо и виджеты оплаты.</small></label><label><input name="plusFeatures" type="checkbox" ${get("plusFeatures", false) ? "checked" : ""}> Функции Plus<small class="dtf-vm-hint">ЛС, история GIF и скрытые комментарии. Серверные функции не гарантированы.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Левая панель</h3><label><input name="hidePopular" type="checkbox" ${get("hidePopular", false) ? "checked" : ""}> Скрыть «Популярное»</label><label><input name="hideNew" type="checkbox" ${get("hideNew", false) ? "checked" : ""}> Скрыть «Свежее»</label><label><input name="hideMy" type="checkbox" ${get("hideMy", false) ? "checked" : ""}> Скрыть «Моя лента»</label><label><input name="hideMessages" type="checkbox" ${get("hideMessages", false) ? "checked" : ""}> Скрыть «Сообщения»</label><label><input name="hideRating" type="checkbox" ${get("hideRating", false) ? "checked" : ""}> Скрыть «Рейтинг»</label><label><input name="hideGames" type="checkbox" ${get("hideGames", false) ? "checked" : ""}> Скрыть раздел «Игры»</label><label><input name="hideTopics" type="checkbox" ${get("hideTopics", false) ? "checked" : ""}> Скрыть раздел «Темы»</label><label><input name="hideFooter" type="checkbox" ${get("hideFooter", false) ? "checked" : ""}> Скрыть нижний блок меню DTF</label></div></div></div></section>`;
+      overlay.innerHTML = `<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-title">Настройки</h2><div class="dtf-vm-settings-grid"><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Лента и изображения</h3><label>Ширина ленты: <output>${width}%</output><input name="width" type="range" min="50" max="100" step="5" value="${width}"><small class="dtf-vm-hint">Работает при ширине окна от 925 px.</small></label><label><input name="centered" type="checkbox" ${get("centered", false) ? "checked" : ""}> Центрировать изображения</label><label><input name="classicGallery" type="checkbox" ${get("classicGallery", false) ? "checked" : ""}> Классическая галерея<small class="dtf-vm-hint">Показывает галерею сеткой.</small></label><label class="dtf-vm-subsetting">Изображений до 4–8: <output>${galleryPreviewCount}</output><input name="galleryPreviewCount" type="range" min="4" max="8" step="1" value="${galleryPreviewCount}"></label><label><input name="disableSpoilerBlur" type="checkbox" ${get("disableSpoilerBlur", false) ? "checked" : ""}> Отключить размытие спойлеров</label><label><input name="quality" type="checkbox" ${get("quality", false) ? "checked" : ""}> Повысить качество</label><label><input name="pauseVideosOnScroll" type="checkbox" ${get("pauseVideosOnScroll", false) ? "checked" : ""}> Пауза при скролле<small class="dtf-vm-hint">Ставит видео на паузу, когда оно выходит из области видимости.</small></label><label><input name="pauseVideosByDefault" type="checkbox" ${get("pauseVideosByDefault", false) ? "checked" : ""}> Пауза по умолчанию<small class="dtf-vm-hint">Ставит новые видео на паузу, чтобы они не запускались сами.</small></label><label class="dtf-vm-dependent"><input name="stretchRight" type="checkbox" ${get("stretchRight", false) ? "checked" : ""}> Растянуть вправо<small class="dtf-vm-hint">Использовать место скрытой правой панели.</small></label><label><input name="hideViewedPosts" type="checkbox" ${get("hideViewedPosts", false) ? "checked" : ""}> Скрывать просмотренное<small class="dtf-vm-hint">Автоматически сворачивать просмотренные посты.</small></label><label class="dtf-vm-subsetting"><input name="showHideButton" type="checkbox" ${get("showHideButton", false) ? "checked" : ""}> Кнопки управления<small class="dtf-vm-hint">Добавить кнопки показать/скрыть на посты.</small></label><button class="dtf-vm-manage-hashtags" type="button">Фильтр хэштегов</button><small class="dtf-vm-hint">Посты без хэштегов остаются в ленте.</small></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Шапка</h3><label><input name="headerWidth" type="checkbox" ${get("headerWidth", false) ? "checked" : ""}> Подогнать шапку под ширину ленты</label><label><input name="plainHeaderSearch" type="checkbox" ${get("plainHeaderSearch", false) ? "checked" : ""}> Лупа без звёздочки</label><label><input name="hideDonationsMenu" type="checkbox" ${get("hideDonationsMenu", false) ? "checked" : ""}> Скрыть «Донаты» в меню профиля</label><label><input name="hidePlusMenu" type="checkbox" ${get("hidePlusMenu", false) ? "checked" : ""}> Скрыть «Подписка Plus» в меню профиля</label></div><div class="dtf-vm-section"><h3>Интерфейс</h3><label><input name="backToTop" type="checkbox" ${get("backToTop", false) ? "checked" : ""}> Кнопка «Наверх»</label><label><input name="smallFixes" type="checkbox" ${get("smallFixes", false) ? "checked" : ""}> Улучшения интерфейса<small class="dtf-vm-hint">Добавляет темы и меняет поле комментария.</small></label></div><div class="dtf-vm-section"><h3>Комментарии</h3><label><input name="expandComments" type="checkbox" ${get("expandComments", true) ? "checked" : ""}> Раскрывать комментарии<small class="dtf-vm-hint">Автоматически раскрывает свернутый список комментариев.</small></label><label class="dtf-vm-subsetting"><input name="expandAllBranches" type="checkbox" ${get("expandAllBranches", false) ? "checked" : ""}> Раскрывать ответы<small class="dtf-vm-hint">Автоматически раскрывает ответы во всех ветках. На длинных обсуждениях может замедлить страницу.</small></label><label class="dtf-vm-subsetting"><input name="skipHiddenComments" type="checkbox" ${get("skipHiddenComments", true) ? "checked" : ""}> Не раскрывать скрытые комментарии</label><label><input name="showRemovedComments" type="checkbox" ${get("showRemovedComments", true) ? "checked" : ""}> Показывать удалённые комментарии</label><label class="dtf-vm-subsetting"><input name="showCommentEdits" type="checkbox" ${get("showCommentEdits", true) ? "checked" : ""}> Показывать историю изменений</label><label class="dtf-vm-subsetting"><input name="showHiddenComments" type="checkbox" ${get("showHiddenComments", true) ? "checked" : ""}> Показывать комментарии, скрытые модерацией</label><label><input name="hideCommentMedia" type="checkbox" ${get("hideCommentMedia", false) ? "checked" : ""}> Скрывать вложения</label><label class="dtf-vm-subsetting"><input name="hideCommentGifs" type="checkbox" ${get("hideCommentGifs", false) ? "checked" : ""}> Скрывать GIF</label><label class="dtf-vm-subsetting"><input name="hideCommentImages" type="checkbox" ${get("hideCommentImages", false) ? "checked" : ""}> Скрывать изображения</label><label class="dtf-vm-subsetting"><input name="hideCommentVideos" type="checkbox" ${get("hideCommentVideos", false) ? "checked" : ""}> Скрывать видео</label><label class="dtf-vm-subsetting"><input name="showMediaRestore" type="checkbox" ${get("showMediaRestore", true) ? "checked" : ""}> Кнопка «Показать»</label><label><input name="showNoCommentIcon" type="checkbox" ${get("showNoCommentIcon", true) ? "checked" : ""}> Показывать, почему нельзя комментировать</label><label><input name="enableCommentQuote" type="checkbox" ${get("enableCommentQuote", true) ? "checked" : ""}> Добавлять цитату в комментарий</label><label class="dtf-vm-subsetting"><input name="quoteMoveTo" type="checkbox" ${get("quoteMoveTo", false) ? "checked" : ""}> Кнопка перехода к полю комментария</label></div><div class="dtf-vm-section"><h3>Правая панель</h3><label><input name="hideRightSidebar" type="checkbox" ${get("hideRightSidebar", false) ? "checked" : ""}> Скрыть «Популярные комментарии»</label><label class="dtf-vm-dependent"><input name="livePanel" type="checkbox" ${get("livePanel", false) ? "checked" : ""}> Live-панель<small class="dtf-vm-hint">Показывает ленту с последними комментариями.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Темы</h3><label><input name="topicSearchEnabled" type="checkbox" ${get("topicSearchEnabled", false) ? "checked" : ""}> Поиск по темам</label><label><input name="onlySubscribedTopics" type="checkbox" ${get("onlySubscribedTopics", false) ? "checked" : ""}> Показывать только темы из моих подписок</label><label>Тем до «Показать все»: <output>${topicLimit}</output><input name="topicLimit" type="range" min="5" max="${topicLimitMax}" step="1" value="${topicLimit}"></label><label><input name="sortTopics" type="checkbox" ${get("sortTopics", false) ? "checked" : ""}> Сортировать темы: EN, затем RU</label><label><input name="reorderTopics" type="checkbox" ${get("reorderTopics", false) ? "checked" : ""}> Менять порядок тем<small class="dtf-vm-hint">Перетаскивайте темы в списке слева.</small></label><button class="dtf-vm-reset-topics" type="button">Сбросить сохранённый порядок</button><button class="dtf-vm-manage-hidden-topics" type="button">Показать/скрыть темы</button></div><div class="dtf-vm-section"><h3>Разное</h3><label><input name="hidePlusAds" type="checkbox" ${get("hidePlusAds", false) ? "checked" : ""}> Скрывать рекламу<small class="dtf-vm-hint">Скрывает рекламные баннеры, промо и виджеты оплаты.</small></label><label><input name="plusFeatures" type="checkbox" ${get("plusFeatures", false) ? "checked" : ""}> Функции Plus<small class="dtf-vm-hint">ЛС, история GIF и скрытые комментарии. Серверные функции не гарантированы.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Левая панель</h3><label><input name="hidePopular" type="checkbox" ${get("hidePopular", false) ? "checked" : ""}> Скрыть «Популярное»</label><label><input name="hideNew" type="checkbox" ${get("hideNew", false) ? "checked" : ""}> Скрыть «Свежее»</label><label><input name="hideMy" type="checkbox" ${get("hideMy", false) ? "checked" : ""}> Скрыть «Моя лента»</label><label><input name="hideMessages" type="checkbox" ${get("hideMessages", false) ? "checked" : ""}> Скрыть «Сообщения»</label><label><input name="hideRating" type="checkbox" ${get("hideRating", false) ? "checked" : ""}> Скрыть «Рейтинг»</label><label><input name="hideGames" type="checkbox" ${get("hideGames", false) ? "checked" : ""}> Скрыть раздел «Игры»</label><label><input name="hideTopics" type="checkbox" ${get("hideTopics", false) ? "checked" : ""}> Скрыть раздел «Темы»</label><label><input name="hideFooter" type="checkbox" ${get("hideFooter", false) ? "checked" : ""}> Скрыть нижний блок меню DTF</label></div></div></div></section>`;
       const columns = overlay.querySelectorAll(".dtf-vm-settings-column");
       const sections = [
         ...overlay.querySelectorAll(
@@ -2900,6 +2933,148 @@
         document.body.append(manager);
         manager.querySelector(".dtf-vm-close").focus();
         if (!topicCatalog.length) loadTopics();
+      };
+      overlay.querySelector(".dtf-vm-manage-hashtags").onclick = () => {
+        const manager = document.createElement("div");
+        manager.className = "dtf-vm-overlay dtf-vm-hashtag-manager-overlay";
+        manager.innerHTML = '<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-hashtag-manager-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-hashtag-manager-title">Фильтр хэштегов</h2><input class="dtf-vm-topic-manager-search" type="search" placeholder="Поиск по хэштегам" aria-label="Поиск по хэштегам"><p class="dtf-vm-hashtag-status" role="status" aria-live="polite"></p><div class="dtf-vm-hashtag-manager-list"></div></section>';
+        const list = manager.querySelector(".dtf-vm-hashtag-manager-list");
+        const search = manager.querySelector("input[type=search]");
+        const status = manager.querySelector(".dtf-vm-hashtag-status");
+        let managerSearch = "";
+        let results = [];
+        let requestId = 0;
+        let searchTimer = null;
+        let activeRequest = null;
+        const renderHashtagManager = () => {
+          const modes = hashtagModes();
+          const tags = new Map(
+            results
+              .filter((item) => typeof item?.text === "string")
+              .map((item) => [item.text.toLocaleLowerCase(), item]),
+          );
+          if (!managerSearch)
+            Object.keys(modes).forEach((tag) =>
+              tags.set(tag, { text: tag, content_count: null }),
+            );
+          list.replaceChildren();
+          [...tags]
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .forEach(([tag, item]) => {
+              const label = document.createElement("label");
+              const name = document.createElement("span");
+              name.textContent = `#${item.text}`;
+              if (Number.isFinite(item.content_count))
+                name.title = `${item.content_count.toLocaleString()} публикаций`;
+              const select = document.createElement("select");
+              select.setAttribute("aria-label", `Режим фильтра для #${tag}`);
+              for (const [value, text] of [
+                ["", "Не фильтровать"],
+                ["include", "Оставлять"],
+                ["exclude", "Исключать"],
+              ]) {
+                const option = document.createElement("option");
+                option.value = value;
+                option.textContent = text;
+                select.append(option);
+              }
+              select.value = modes[tag] || "";
+              select.onchange = () => {
+                const next = { ...hashtagModes() };
+                if (select.value)
+                  Object.defineProperty(next, tag, {
+                    value: select.value,
+                    enumerable: true,
+                    configurable: true,
+                    writable: true,
+                  });
+                else delete next[tag];
+                set("hashtagModes", next);
+                syncHashtagCards();
+              };
+              label.append(name, select);
+              list.append(label);
+            });
+        };
+        const searchHashtags = (query, id) => {
+          const url = new URL("https://api.dtf.ru/v2.6/search-hashtag");
+          url.searchParams.set("q", query);
+          activeRequest = GM_xmlhttpRequest({
+            method: "GET",
+            url: url.href,
+            anonymous: true,
+            timeout: 10000,
+            onload: (response) => {
+              if (id !== requestId) return;
+              activeRequest = null;
+              try {
+                if (response.status < 200 || response.status >= 300)
+                  throw new Error(`HTTP ${response.status}`);
+                const items = JSON.parse(response.responseText).result?.items;
+                if (!Array.isArray(items)) throw new Error("Invalid response");
+                results = items;
+                status.textContent = items.length
+                  ? `Найдено: ${items.length}`
+                  : "Ничего не найдено";
+                renderHashtagManager();
+              } catch {
+                status.textContent = "Не удалось загрузить хэштеги";
+              }
+            },
+            onerror: () => {
+              if (id === requestId) {
+                activeRequest = null;
+                status.textContent = "Не удалось загрузить хэштеги";
+              }
+            },
+            ontimeout: () => {
+              if (id === requestId) {
+                activeRequest = null;
+                status.textContent = "Поиск не ответил вовремя";
+              }
+            },
+          });
+        };
+        search.oninput = () => {
+          managerSearch = search.value.trim().toLocaleLowerCase();
+          results = [];
+          requestId++;
+          clearTimeout(searchTimer);
+          activeRequest?.abort();
+          activeRequest = null;
+          if (!managerSearch) {
+            status.textContent = "Введите название хэштега для поиска";
+            renderHashtagManager();
+            return;
+          }
+          status.textContent = "Ищем…";
+          renderHashtagManager();
+          const id = requestId;
+          searchTimer = setTimeout(
+            () => searchHashtags(managerSearch, id),
+            250,
+          );
+        };
+        const closeHashtagManager = () => {
+          requestId++;
+          clearTimeout(searchTimer);
+          activeRequest?.abort();
+          document.removeEventListener("keydown", onHashtagManagerKeydown);
+          manager.remove();
+          overlay.querySelector(".dtf-vm-manage-hashtags").focus();
+        };
+        const onHashtagManagerKeydown = (event) => {
+          if (event.key === "Escape") closeHashtagManager();
+        };
+        manager.querySelector(".dtf-vm-close").onclick = closeHashtagManager;
+        manager.addEventListener("click", (event) => {
+          if (event.target === manager) closeHashtagManager();
+        });
+        status.textContent = "Введите название хэштега для поиска";
+        renderHashtagManager();
+        document.addEventListener("keydown", onHashtagManagerKeydown);
+        document.body.append(manager);
+        manager.querySelector(".dtf-vm-close").focus();
       };
       document.body.append(overlay);
       updateRightPanelControls();
