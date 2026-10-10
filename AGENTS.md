@@ -7,7 +7,7 @@
 3. Read relevant implementation, callers, tests, and docs before changing behavior. If they conflict, surface conflict instead of guessing.
 4. For bugs, trace failing path and shared callers. Fix narrowest layer that corrects cause without changing unrelated behavior.
 5. Keep changes focused. Avoid unnecessary dependencies and unrelated refactoring.
-6. Commit, pull, or push only when requested. Use Conventional Commits: `<type>[optional scope]: <description>`.
+6. Commit/PR, pull, or push only when requested. Use Conventional Commits: `<type>[optional scope]: <description>`.
 
 ## Testing
 

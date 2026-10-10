@@ -10,19 +10,25 @@ const script = fs.readFileSync(
 );
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-chromium-"));
 const html = path.join(dir, "test.html");
-const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><aside class="random-nav"><section class="random-group"><div class="random-heading" data-section="topics">Темы</div><div class="random-links"><a class="random-link" href="https://dtf.ru/games"><span>Игры</span></a><a class="random-link" href="https://dtf.ru/cinema"><span>Кино</span></a><a class="random-link" href="https://dtf.ru/iron"><span>Железо</span></a><a class="random-link" href="https://dtf.ru/capycomic"><span>CapyComic</span></a><a class="random-link" href="https://edu.vc.ru" target="_blank"><div><span>Обучение <svg></svg></span></div></a></div></section><section class="random-group"><button class="random-heading" data-section="services"><span>Сервисы</span></button><div class="random-links"><a class="random-link" href="/service">Сервис</a></div></section></aside><script>
-const values = new Map([['smallFixes', false], ['hiddenTopics', [{path:'/stored-topic',name:'Saved topic'}]], ['topicCatalogCache', [{url:'https://dtf.ru/games',name:'Игры'}, {url:'https://dtf.ru/cinema',name:'Кино'}, {url:'https://dtf.ru/iron',name:'Железо'}]], ['subscribedTopics', [{href:'/games',name:'Игры'}, {href:'/hardware',name:'Железо'}, {href:'/journey',name:'Путешествия'}]]]);
+const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><div class="content" id="hashtag-keep">#games</div><div class="content" id="hashtag-other">#other</div><div class="content" id="hashtag-exclude">#games #ads</div><div class="content" id="hashtag-untagged">untagged</div><div class="content" id="hashtag-linked-news">Новость из игры <a href="https://dtf.ru/tag/новости">Новости</a></div><div class="content" id="hashtag-api-news">Карточка из ленты <a href="https://dtf.ru/games/5346137-esoteric-ebb">Пост</a></div><aside class="random-nav"><section class="random-group"><div class="random-heading" data-section="topics">Темы</div><div class="random-links"><a class="random-link" href="https://dtf.ru/games"><span>Игры</span></a><a class="random-link" href="https://dtf.ru/cinema"><span>Кино</span></a><a class="random-link" href="https://dtf.ru/iron"><span>Железо</span></a><a class="random-link" href="https://dtf.ru/capycomic"><span>CapyComic</span></a><a class="random-link" href="https://edu.vc.ru" target="_blank"><div><span>Обучение <svg></svg></span></div></a></div></section><section class="random-group"><button class="random-heading" data-section="services"><span>Сервисы</span></button><div class="random-links"><a class="random-link" href="/service">Сервис</a></div></section></aside><script>
+const values = new Map([['smallFixes', false], ['hashtagModes', {games:'include', ads:'exclude', новости:'exclude'}], ['hiddenTopics', [{path:'/stored-topic',name:'Saved topic'}]], ['topicCatalogCache', [{url:'https://dtf.ru/games',name:'Игры'}, {url:'https://dtf.ru/cinema',name:'Кино'}, {url:'https://dtf.ru/iron',name:'Железо'}]], ['subscribedTopics', [{href:'/games',name:'Игры'}, {href:'/hardware',name:'Железо'}, {href:'/journey',name:'Путешествия'}]]]);
 window.GM_getValue = (key, fallback) => values.has(key) ? values.get(key) : fallback;
 window.GM_setValue = (key, value) => values.set(key, value);
 window.GM_addValueChangeListener = () => 1;
 window.GM_removeValueChangeListener = () => {};
 window.GM_registerMenuCommand = (label, callback) => { window.menuCommand = callback; };
-window.GM_xmlhttpRequest = () => { throw Error('Unexpected network request'); };
+window.hashtagRequests = [];
+window.GM_xmlhttpRequest = options => {
+  const request = { ...options, aborted: false };
+  window.hashtagRequests.push(request);
+  return { abort: () => { request.aborted = true; } };
+};
 window.sockets = [];
 window.WebSocket = class { constructor() { this.sent = []; window.sockets.push(this); } send(value) { this.sent.push(value); } close() { this.closed = true; } };
 window.unsafeWindow = window;
+window.fetch = async () => new Response(JSON.stringify({result:{items:[{type:'entry',data:{id:5346137,blocks:[{type:'text',data:{text:'<a href="https://dtf.ru/tag/новости">Новости</a>'}}]}}]}}), {headers:{'Content-Type':'application/json'}});
 </script><script>${script}</script><script>
-setTimeout(() => {
+setTimeout(async () => {
   const fail = message => { document.body.dataset.result = 'FAIL: ' + message; };
   const nativeSetTimeout = window.setTimeout.bind(window);
   const nativeClearTimeout = window.clearTimeout.bind(window);
@@ -37,6 +43,31 @@ setTimeout(() => {
   };
   if (document.querySelector('.dtf-vm-topic-search')) return fail('enabled by default');
   window.menuCommand();
+  const hashtagSection = [...document.querySelectorAll('.dtf-vm-section')].find(section => section.querySelector('h3')?.textContent.trim() === 'Хэштеги');
+  if (!hashtagSection?.querySelector('.dtf-vm-manage-hashtags') || document.querySelectorAll('.dtf-vm-manage-hashtags').length !== 1) return fail('dedicated hashtag settings category');
+  if (document.querySelector('#hashtag-keep').classList.contains('dtf-vm-hashtag-hidden') || !document.querySelector('#hashtag-other').classList.contains('dtf-vm-hashtag-hidden') || !document.querySelector('#hashtag-exclude').classList.contains('dtf-vm-hashtag-hidden') || document.querySelector('#hashtag-untagged').classList.contains('dtf-vm-hashtag-hidden') || !document.querySelector('#hashtag-linked-news').classList.contains('dtf-vm-hashtag-hidden')) return fail('per-tag filtering, linked hashtag, or untagged card behavior');
+  if (document.querySelector('#hashtag-api-news').classList.contains('dtf-vm-hashtag-hidden')) return fail('API fixture should wait for feed metadata');
+  await fetch('https://api.dtf.ru/v2.10/feed');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  if (!document.querySelector('#hashtag-api-news').classList.contains('dtf-vm-hashtag-hidden')) return fail('hashtag present only in API blocks was not filtered');
+  const manageHashtagsButton = document.querySelector('.dtf-vm-manage-hashtags');
+  if (!manageHashtagsButton) return fail('missing hashtag manager setting');
+  manageHashtagsButton.click();
+  let hashtagManager = document.querySelector('.dtf-vm-hashtag-manager-overlay');
+  let hashtagSearch = hashtagManager.querySelector('input[type=search]');
+  hashtagSearch.value = 'OTHER'; hashtagSearch.dispatchEvent(new Event('input', {bubbles:true}));
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const hashtagRequest = window.hashtagRequests.at(-1);
+  if (!hashtagRequest?.url.includes('/v2.6/search-hashtag?q=other')) return fail('search DTF hashtag API after typing');
+  hashtagRequest.onload({status: 200, responseText: JSON.stringify({result:{items:[{text:'other',content_count:15}]}})});
+  const otherMode = hashtagManager.querySelector('select[aria-label="Режим фильтра для #other"]');
+  if (!otherMode || hashtagManager.querySelectorAll('.dtf-vm-hashtag-manager-list label').length !== 1 || !hashtagManager.textContent.includes('Найдено: 1')) return fail('render hashtag API results');
+  otherMode.value = 'include'; otherMode.onchange();
+  if (document.querySelector('#hashtag-other').classList.contains('dtf-vm-hashtag-hidden') || values.get('hashtagModes').other !== 'include') return fail('save include mode from manager');
+  hashtagSearch.value = ''; hashtagSearch.dispatchEvent(new Event('input', {bubbles:true}));
+  if (!hashtagManager.textContent.includes('#other')) return fail('show saved hashtag mode when search is empty');
+  document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape', bubbles:true}));
+  if (document.querySelector('.dtf-vm-hashtag-manager-overlay')) return fail('close hashtag manager with Escape');
   const manageTopicsButton = document.querySelector('.dtf-vm-manage-hidden-topics');
   if (!manageTopicsButton) return fail('missing topic manager setting');
   manageTopicsButton.click();

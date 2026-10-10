@@ -73,7 +73,7 @@ window.fetch = async input => new Response(JSON.stringify({result:{items:String(
   const settingsGrid = document.querySelector('.dtf-vm-settings-grid');
   if (getComputedStyle(settingsGrid).gridTemplateColumns.trim().split(' ').length !== 3) return fail('settings grid has an unused column');
   const sectionCounts = [...settingsGrid.children].map(column => column.children.length).join(',');
-  if (sectionCounts !== '2,3,3') return fail('settings columns are unbalanced: ' + sectionCounts);
+  if (sectionCounts !== '3,3,3') return fail('settings columns are unbalanced: ' + sectionCounts);
   const middleSections = [...settingsGrid.children[1].querySelectorAll(':scope > .dtf-vm-section h3')].map(heading => heading.textContent).join(',');
   if (middleSections !== 'Интерфейс,Комментарии,Правая панель') return fail('middle column section order is wrong: ' + middleSections);
   const rightSections = [...settingsGrid.children[2].querySelectorAll(':scope > .dtf-vm-section h3')].map(heading => heading.textContent).join(',');
