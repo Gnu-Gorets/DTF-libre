@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.98
+// @version      0.0.99
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -28,16 +28,27 @@
       ? modes
       : {};
   };
-  const hashtagsIn = (text) =>
-    [...text.matchAll(/#([\p{L}\p{N}_-]+)/gu)].map((match) =>
-      match[1].toLocaleLowerCase(),
+  const hashtagsIn = (card) => {
+    const tags = new Set(
+      [...card.textContent.matchAll(/#([\p{L}\p{N}_-]+)/gu)].map((match) =>
+        match[1].toLocaleLowerCase(),
+      ),
     );
+    for (const link of card.querySelectorAll("a[href]")) {
+      try {
+        const path = new URL(link.href, location.origin).pathname;
+        const match = path.match(/^\/tag\/([^/]+)\/?$/);
+        if (match) tags.add(decodeURIComponent(match[1]).toLocaleLowerCase());
+      } catch {}
+    }
+    return tags;
+  };
   const syncHashtagCard = (card) => {
     if (!card.isConnected || card.closest(".entry")) return;
     const modes = hashtagModes();
     const include = Object.keys(modes).filter((tag) => modes[tag] === "include");
     const exclude = Object.keys(modes).filter((tag) => modes[tag] === "exclude");
-    const tags = new Set(hashtagsIn(card.textContent));
+    const tags = hashtagsIn(card);
     card.classList.toggle(
       "dtf-vm-hashtag-hidden",
       (include.length > 0 &&
