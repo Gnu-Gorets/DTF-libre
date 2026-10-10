@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.95
+// @version      0.0.96
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -684,9 +684,9 @@
     .dtf-vm-dialog input[type=range]::-moz-range-track { height: 6px; background: #555a64; border-radius: 6px; }
     .dtf-vm-dialog input[type=range]::-moz-range-thumb { width: 18px; height: 18px; background: #1685ff; border: 0; border-radius: 50%; }
     .dtf-vm-dialog input[type=checkbox] { appearance: auto; width: 16px; height: 16px; margin: 0 7px 0 0; accent-color: #1685ff; vertical-align: middle; }
-    .dtf-vm-reset-topics { margin-top: 4px; padding: 8px 12px; color: #d7dbe2; background: #34363b; border: 1px solid #50535a; border-radius: 6px; font-size: 13px; cursor: pointer; }
-    .dtf-vm-reset-topics:hover { color: #fff; background: #41444a; }
-    .dtf-vm-reset-topics:focus-visible { outline: 2px solid #1685ff; outline-offset: 2px; }
+    .dtf-vm-reset-topics, .dtf-vm-manage-hashtags { margin-top: 4px; padding: 8px 12px; color: var(--theme-color-text-primary); background: var(--theme-color-button-secondary); border: 1px solid var(--theme-color-text-secondary); border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; }
+    .dtf-vm-reset-topics:hover, .dtf-vm-manage-hashtags:hover { background: var(--theme-color-button-subtle); }
+    .dtf-vm-reset-topics:focus-visible, .dtf-vm-manage-hashtags:focus-visible { outline: 2px solid #1685ff; outline-offset: 2px; }
     .dtf-vm-close { position: absolute; top: 8px; right: 10px; color: #fff; background: none; border: 0; font-size: 20px; cursor: pointer; }
     .dtf-vm-top { position: fixed; right: 24px; bottom: 24px; z-index: 2147483646; display: grid; place-items: center; width: 48px; height: 48px; padding: 0; color: #fff !important; background: #1685ff !important; border: 0; border-radius: 50%; box-shadow: 0 3px 12px #0007; font: 28px/1 system-ui,sans-serif !important; cursor: pointer; }
     .dtf-vm-top[hidden] { display: none !important; }
@@ -702,11 +702,12 @@
     .dtf-vm-topic-manager-list { max-height: min(65vh, 700px); overflow: auto; }
     .dtf-vm-topic-manager-list label { display: flex; align-items: center; gap: 8px; }
     .dtf-vm-topic-manager-list input { flex: 0 0 auto; }
-    .dtf-vm-hashtag-status { margin: 0 0 6px; color: #aeb4c0; font-size: 12px; }
+    .dtf-vm-hashtag-status { margin: 0 0 6px; color: var(--theme-color-text-secondary); font-size: 12px; }
     .dtf-vm-hashtag-manager-list { max-height: min(65vh, 700px); overflow: auto; }
-    .dtf-vm-hashtag-manager-list label { display: flex; align-items: center; gap: 8px; }
-    .dtf-vm-hashtag-manager-list select { flex: 0 0 auto; margin-left: auto; padding: 5px 8px; color: inherit; background: #202329; border: 1px solid #454a53; border-radius: 6px; }
-    .dtf-vm-manage-hashtags { margin-top: 4px; padding: 8px 12px; color: #d7dbe2; background: #34363b; border: 1px solid #50535a; border-radius: 6px; font-size: 13px; cursor: pointer; }
+    .dtf-vm-hashtag-manager-list label { display: flex; align-items: center; gap: 8px; margin: 2px 0; padding: 5px 8px; border-radius: 6px; }
+    .dtf-vm-hashtag-manager-list label:hover { background: var(--theme-color-button-subtle); }
+    .dtf-vm-hashtag-manager-list select { flex: 0 0 auto; margin-left: auto; padding: 5px 8px; color: var(--theme-color-text-primary); background: var(--theme-color-background-content); border: 1px solid var(--theme-color-text-secondary); border-radius: 6px; font: inherit; }
+    .dtf-vm-hashtag-manager-list select:focus-visible { outline: 2px solid #1685ff; outline-offset: 2px; }
     .dtf-vm-topic-extras > a { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 8px; color: inherit; text-decoration: none; }
     .dtf-vm-topic-extras > a img { flex: 0 0 32px; width: 32px; height: 32px; object-fit: cover; border-radius: 50%; }
     .dtf-vm-topic-original { display: none !important; }
