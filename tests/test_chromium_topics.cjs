@@ -42,6 +42,8 @@ setTimeout(async () => {
   };
   if (document.querySelector('.dtf-vm-topic-search')) return fail('enabled by default');
   window.menuCommand();
+  const hashtagSection = [...document.querySelectorAll('.dtf-vm-section')].find(section => section.querySelector('h3')?.textContent.trim() === 'Хэштеги');
+  if (!hashtagSection?.querySelector('.dtf-vm-manage-hashtags') || document.querySelectorAll('.dtf-vm-manage-hashtags').length !== 1) return fail('dedicated hashtag settings category');
   if (document.querySelector('#hashtag-keep').classList.contains('dtf-vm-hashtag-hidden') || !document.querySelector('#hashtag-other').classList.contains('dtf-vm-hashtag-hidden') || !document.querySelector('#hashtag-exclude').classList.contains('dtf-vm-hashtag-hidden') || document.querySelector('#hashtag-untagged').classList.contains('dtf-vm-hashtag-hidden')) return fail('per-tag filtering or untagged card behavior');
   const manageHashtagsButton = document.querySelector('.dtf-vm-manage-hashtags');
   if (!manageHashtagsButton) return fail('missing hashtag manager setting');
