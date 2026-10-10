@@ -20,6 +20,14 @@ assert.equal(
   "mobile viewport has no desktop sidebars",
 );
 assert(
+  source.includes('name="width" type="range" min="50" max="100" step="5"'),
+  "feed width slider range and step",
+);
+assert(
+  source.includes("Работает при ширине окна от 925 px."),
+  "feed width setting explains its minimum viewport",
+);
+assert(
   source.includes(".layout:has(.view)"),
   "all DTF views receive computed width",
 );
