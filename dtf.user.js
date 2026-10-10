@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.99
+// @version      0.0.100
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -28,20 +28,52 @@
       ? modes
       : {};
   };
+  const hashtagTagsById = new Map();
   const hashtagsIn = (card) => {
     const tags = new Set(
       [...card.textContent.matchAll(/#([\p{L}\p{N}_-]+)/gu)].map((match) =>
         match[1].toLocaleLowerCase(),
       ),
     );
+    let entryId;
     for (const link of card.querySelectorAll("a[href]")) {
       try {
         const path = new URL(link.href, location.origin).pathname;
-        const match = path.match(/^\/tag\/([^/]+)\/?$/);
-        if (match) tags.add(decodeURIComponent(match[1]).toLocaleLowerCase());
+        const tagMatch = path.match(/^\/tag\/([^/]+)\/?$/);
+        if (tagMatch)
+          tags.add(decodeURIComponent(tagMatch[1]).toLocaleLowerCase());
+        entryId ||= path.match(/\/(\d+)(?:-[^/]+)?\/?$/)?.[1];
       } catch {}
     }
+    for (const tag of hashtagTagsById.get(entryId) || []) tags.add(tag);
     return tags;
+  };
+  const syncHashtagFeedItems = (items) => {
+    let updated = false;
+    for (const item of items) {
+      const data = item?.type === "entry" ? item.data : null;
+      if (!data?.id) continue;
+      const tags = new Set();
+      for (const block of Array.isArray(data.blocks) ? data.blocks : []) {
+        const markup = block?.data?.text;
+        if (typeof markup !== "string") continue;
+        for (const match of markup.matchAll(/#([\p{L}\p{N}_-]+)/gu))
+          tags.add(match[1].toLocaleLowerCase());
+        for (const match of markup.matchAll(/href=["']([^"']+)["']/giu)) {
+          try {
+            const path = new URL(match[1], location.origin).pathname;
+            const tagMatch = path.match(/^\/tag\/([^/]+)\/?$/);
+            if (tagMatch)
+              tags.add(decodeURIComponent(tagMatch[1]).toLocaleLowerCase());
+          } catch {}
+        }
+      }
+      hashtagTagsById.set(String(data.id), tags);
+      if (hashtagTagsById.size > 500)
+        hashtagTagsById.delete(hashtagTagsById.keys().next().value);
+      updated = true;
+    }
+    if (updated) syncHashtagCards();
   };
   const syncHashtagCard = (card) => {
     if (!card.isConnected || card.closest(".entry")) return;
@@ -124,6 +156,7 @@
               .then((data) => {
                 const items = data?.result?.items;
                 if (Array.isArray(items)) {
+                  syncHashtagFeedItems(items);
                   const entry = { url: String(url), items };
                   recentCommentResponses.push(entry);
                   if (recentCommentResponses.length > 20)

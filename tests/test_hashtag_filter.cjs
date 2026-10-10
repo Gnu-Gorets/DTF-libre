@@ -22,7 +22,7 @@ const context = {
   document: { querySelectorAll: () => cards },
 };
 vm.runInNewContext(
-  `${source.slice(start, end)}\nglobalThis.syncCard = syncHashtagCard; globalThis.syncCards = syncHashtagCards;`,
+  `${source.slice(start, end)}\nglobalThis.syncCard = syncHashtagCard; globalThis.syncCards = syncHashtagCards; globalThis.syncFeedItems = syncHashtagFeedItems;`,
   context,
 );
 const card = (text, { connected = true, entry = false, links = [] } = {}) => {
@@ -46,6 +46,12 @@ const advert = card("Пост #игры и #реклама");
 const gameNews = card("Новость в игровой теме", {
   links: [{ href: "https://dtf.ru/tag/новости" }],
 });
+const apiNews = card("Карточка без тегов в DOM", {
+  links: [{ href: "https://dtf.ru/games/5346137-esoteric-ebb" }],
+});
+const apiUntagged = card("Пост без API-хэштегов", {
+  links: [{ href: "https://dtf.ru/games/5346138-no-tags" }],
+});
 context.syncCards();
 assert.equal(game.hidden(), false, "keep a selected hashtag");
 assert.equal(movie.hidden(), false, "include any selected hashtag");
@@ -53,6 +59,12 @@ assert.equal(other.hidden(), true, "hide other tagged posts when include mode is
 assert.equal(untagged.hidden(), false, "keep posts without hashtags");
 assert.equal(advert.hidden(), true, "exclude mode takes precedence");
 assert.equal(gameNews.hidden(), true, "exclude a hashtag linked without # text");
+context.syncFeedItems([
+  { type: "entry", data: { id: 5346137, blocks: [{ data: { text: '<a href="/tag/новости">Новости</a>' } }] } },
+  { type: "entry", data: { id: 5346138, blocks: [{ data: { text: "Без тегов" } }] } },
+]);
+assert.equal(apiNews.hidden(), true, "exclude a hashtag found only in API blocks");
+assert.equal(apiUntagged.hidden(), false, "keep API post without hashtags visible");
 values.hashtagModes = { реклама: "exclude" };
 context.syncCard(other);
 assert.equal(other.hidden(), false, "exclude-only mode leaves unrelated tags visible");

@@ -10,7 +10,7 @@ const script = fs.readFileSync(
 );
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-chromium-"));
 const html = path.join(dir, "test.html");
-const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><div class="content" id="hashtag-keep">#games</div><div class="content" id="hashtag-other">#other</div><div class="content" id="hashtag-exclude">#games #ads</div><div class="content" id="hashtag-untagged">untagged</div><div class="content" id="hashtag-linked-news">Новость из игры <a href="https://dtf.ru/tag/новости">Новости</a></div><aside class="random-nav"><section class="random-group"><div class="random-heading" data-section="topics">Темы</div><div class="random-links"><a class="random-link" href="https://dtf.ru/games"><span>Игры</span></a><a class="random-link" href="https://dtf.ru/cinema"><span>Кино</span></a><a class="random-link" href="https://dtf.ru/iron"><span>Железо</span></a><a class="random-link" href="https://dtf.ru/capycomic"><span>CapyComic</span></a><a class="random-link" href="https://edu.vc.ru" target="_blank"><div><span>Обучение <svg></svg></span></div></a></div></section><section class="random-group"><button class="random-heading" data-section="services"><span>Сервисы</span></button><div class="random-links"><a class="random-link" href="/service">Сервис</a></div></section></aside><script>
+const fixture = `<!doctype html><meta charset="utf-8"><body><div class="layout"></div><div class="content" id="hashtag-keep">#games</div><div class="content" id="hashtag-other">#other</div><div class="content" id="hashtag-exclude">#games #ads</div><div class="content" id="hashtag-untagged">untagged</div><div class="content" id="hashtag-linked-news">Новость из игры <a href="https://dtf.ru/tag/новости">Новости</a></div><div class="content" id="hashtag-api-news">Карточка из ленты <a href="https://dtf.ru/games/5346137-esoteric-ebb">Пост</a></div><aside class="random-nav"><section class="random-group"><div class="random-heading" data-section="topics">Темы</div><div class="random-links"><a class="random-link" href="https://dtf.ru/games"><span>Игры</span></a><a class="random-link" href="https://dtf.ru/cinema"><span>Кино</span></a><a class="random-link" href="https://dtf.ru/iron"><span>Железо</span></a><a class="random-link" href="https://dtf.ru/capycomic"><span>CapyComic</span></a><a class="random-link" href="https://edu.vc.ru" target="_blank"><div><span>Обучение <svg></svg></span></div></a></div></section><section class="random-group"><button class="random-heading" data-section="services"><span>Сервисы</span></button><div class="random-links"><a class="random-link" href="/service">Сервис</a></div></section></aside><script>
 const values = new Map([['smallFixes', false], ['hashtagModes', {games:'include', ads:'exclude', новости:'exclude'}], ['hiddenTopics', [{path:'/stored-topic',name:'Saved topic'}]], ['topicCatalogCache', [{url:'https://dtf.ru/games',name:'Игры'}, {url:'https://dtf.ru/cinema',name:'Кино'}, {url:'https://dtf.ru/iron',name:'Железо'}]], ['subscribedTopics', [{href:'/games',name:'Игры'}, {href:'/hardware',name:'Железо'}, {href:'/journey',name:'Путешествия'}]]]);
 window.GM_getValue = (key, fallback) => values.has(key) ? values.get(key) : fallback;
 window.GM_setValue = (key, value) => values.set(key, value);
@@ -26,6 +26,7 @@ window.GM_xmlhttpRequest = options => {
 window.sockets = [];
 window.WebSocket = class { constructor() { this.sent = []; window.sockets.push(this); } send(value) { this.sent.push(value); } close() { this.closed = true; } };
 window.unsafeWindow = window;
+window.fetch = async () => new Response(JSON.stringify({result:{items:[{type:'entry',data:{id:5346137,blocks:[{type:'text',data:{text:'<a href="https://dtf.ru/tag/новости">Новости</a>'}}]}}]}}), {headers:{'Content-Type':'application/json'}});
 </script><script>${script}</script><script>
 setTimeout(async () => {
   const fail = message => { document.body.dataset.result = 'FAIL: ' + message; };
@@ -45,6 +46,10 @@ setTimeout(async () => {
   const hashtagSection = [...document.querySelectorAll('.dtf-vm-section')].find(section => section.querySelector('h3')?.textContent.trim() === 'Хэштеги');
   if (!hashtagSection?.querySelector('.dtf-vm-manage-hashtags') || document.querySelectorAll('.dtf-vm-manage-hashtags').length !== 1) return fail('dedicated hashtag settings category');
   if (document.querySelector('#hashtag-keep').classList.contains('dtf-vm-hashtag-hidden') || !document.querySelector('#hashtag-other').classList.contains('dtf-vm-hashtag-hidden') || !document.querySelector('#hashtag-exclude').classList.contains('dtf-vm-hashtag-hidden') || document.querySelector('#hashtag-untagged').classList.contains('dtf-vm-hashtag-hidden') || !document.querySelector('#hashtag-linked-news').classList.contains('dtf-vm-hashtag-hidden')) return fail('per-tag filtering, linked hashtag, or untagged card behavior');
+  if (document.querySelector('#hashtag-api-news').classList.contains('dtf-vm-hashtag-hidden')) return fail('API fixture should wait for feed metadata');
+  await fetch('https://api.dtf.ru/v2.10/feed');
+  await new Promise(resolve => setTimeout(resolve, 50));
+  if (!document.querySelector('#hashtag-api-news').classList.contains('dtf-vm-hashtag-hidden')) return fail('hashtag present only in API blocks was not filtered');
   const manageHashtagsButton = document.querySelector('.dtf-vm-manage-hashtags');
   if (!manageHashtagsButton) return fail('missing hashtag manager setting');
   manageHashtagsButton.click();
