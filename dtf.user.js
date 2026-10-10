@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.100
+// @version      0.0.95
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -78,8 +78,12 @@
   const syncHashtagCard = (card) => {
     if (!card.isConnected || card.closest(".entry")) return;
     const modes = hashtagModes();
-    const include = Object.keys(modes).filter((tag) => modes[tag] === "include");
-    const exclude = Object.keys(modes).filter((tag) => modes[tag] === "exclude");
+    const include = Object.keys(modes).filter(
+      (tag) => modes[tag] === "include",
+    );
+    const exclude = Object.keys(modes).filter(
+      (tag) => modes[tag] === "exclude",
+    );
     const tags = hashtagsIn(card);
     card.classList.toggle(
       "dtf-vm-hashtag-hidden",
@@ -2125,7 +2129,8 @@
           );
           item.classList.toggle(
             "dtf-vm-topic-search-hidden",
-            Boolean(topicSearch) && !name.toLocaleLowerCase().includes(topicSearch),
+            Boolean(topicSearch) &&
+              !name.toLocaleLowerCase().includes(topicSearch),
           );
         });
       const nativeLinks = [...content.querySelectorAll(":scope > a[href]")];
@@ -2222,9 +2227,7 @@
       } else {
         items = onlySubscribed ? source : catalogItems();
       }
-      items = applyTopicOrder(
-        items.filter((item) => !isTopicHidden(item)),
-      );
+      items = applyTopicOrder(items.filter((item) => !isTopicHidden(item)));
       const limit = Math.max(
         5,
         Math.min(
@@ -2888,7 +2891,8 @@
       overlay.querySelector(".dtf-vm-manage-hidden-topics").onclick = () => {
         const manager = document.createElement("div");
         manager.className = "dtf-vm-overlay dtf-vm-topic-manager-overlay";
-        manager.innerHTML = '<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-topic-manager-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-topic-manager-title">Показать/скрыть темы</h2><input class="dtf-vm-topic-manager-search" type="search" placeholder="Поиск по темам" aria-label="Поиск по темам"><div class="dtf-vm-topic-manager-list"></div></section>';
+        manager.innerHTML =
+          '<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-topic-manager-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-topic-manager-title">Показать/скрыть темы</h2><input class="dtf-vm-topic-manager-search" type="search" placeholder="Поиск по темам" aria-label="Поиск по темам"><div class="dtf-vm-topic-manager-list"></div></section>';
         const list = manager.querySelector(".dtf-vm-topic-manager-list");
         const search = manager.querySelector(".dtf-vm-topic-manager-search");
         let managerSearch = "";
@@ -2913,7 +2917,10 @@
             ...(Array.isArray(subscribedTopics) ? subscribedTopics : []),
             ...sidebarTopics,
           ].forEach((topic) => {
-            if (typeof topic?.href !== "string" || typeof topic?.name !== "string")
+            if (
+              typeof topic?.href !== "string" ||
+              typeof topic?.name !== "string"
+            )
               return;
             if (
               [...topics.values()].some(
@@ -2987,7 +2994,8 @@
       overlay.querySelector(".dtf-vm-manage-hashtags").onclick = () => {
         const manager = document.createElement("div");
         manager.className = "dtf-vm-overlay dtf-vm-hashtag-manager-overlay";
-        manager.innerHTML = '<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-hashtag-manager-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-hashtag-manager-title">Фильтр хэштегов</h2><input class="dtf-vm-topic-manager-search" type="search" placeholder="Поиск по хэштегам" aria-label="Поиск по хэштегам"><p class="dtf-vm-hashtag-status" role="status" aria-live="polite"></p><div class="dtf-vm-hashtag-manager-list"></div></section>';
+        manager.innerHTML =
+          '<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-hashtag-manager-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-hashtag-manager-title">Фильтр хэштегов</h2><input class="dtf-vm-topic-manager-search" type="search" placeholder="Поиск по хэштегам" aria-label="Поиск по хэштегам"><p class="dtf-vm-hashtag-status" role="status" aria-live="polite"></p><div class="dtf-vm-hashtag-manager-list"></div></section>';
         const list = manager.querySelector(".dtf-vm-hashtag-manager-list");
         const search = manager.querySelector("input[type=search]");
         const status = manager.querySelector(".dtf-vm-hashtag-status");
