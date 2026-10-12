@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.97
+// @version      0.0.98
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -143,6 +143,56 @@
     event.stopImmediatePropagation();
     syncPlus(true);
   });
+  // DTF exposes video UUIDs but not poster URLs in feed data.
+  const videoPosterForMedia = (media) => {
+    const data = media?.image?.data;
+    if (
+      !data?.isVideo ||
+      !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(data.uuid || "")
+    )
+      return null;
+    const width = Number(data.width);
+    const targetWidth = Math.min(
+      1280,
+      width > 0 && Number.isFinite(width) ? Math.ceil(width) : 592,
+    );
+    return `https://leonardo.osnova.io/${data.uuid}/-/scale_crop/${targetWidth}x/`;
+  };
+  const videoPostersFromEntry = (item) => {
+    const data = item?.type === "entry" ? item.data : null;
+    const id = String(data?.id ?? "");
+    if (!/^\d+$/.test(id)) return null;
+    const posters = (Array.isArray(data.blocks) ? data.blocks : [])
+      .filter((block) => block?.type === "media")
+      .flatMap((block) =>
+        Array.isArray(block.data?.items) ? block.data.items : [],
+      )
+      .map(videoPosterForMedia)
+      .filter(Boolean);
+    return posters.length ? { id, posters } : null;
+  };
+  const videoPostersById = new Map();
+  const videoPosterPreloads = new Map();
+  const rememberVideoPosters = (items) => {
+    let updated = false;
+    for (const item of items) {
+      const entry = videoPostersFromEntry(item);
+      if (!entry) continue;
+      videoPostersById.set(entry.id, entry.posters);
+      if (videoPostersById.size > 500)
+        videoPostersById.delete(videoPostersById.keys().next().value);
+      updated = true;
+      for (const poster of entry.posters) {
+        if (videoPosterPreloads.has(poster)) continue;
+        const image = new Image();
+        videoPosterPreloads.set(poster, image);
+        image.onload = () => videoPosterPreloads.set(poster, null);
+        image.onerror = () => videoPosterPreloads.delete(poster);
+        image.src = poster;
+      }
+    }
+    if (updated) syncVideoPosters(document);
+  };
   const originalFetch = page.fetch;
   const commentFeedListeners = new Set();
   const recentCommentResponses = [];
@@ -161,6 +211,7 @@
                 const items = data?.result?.items;
                 if (Array.isArray(items)) {
                   syncHashtagFeedItems(items);
+                  rememberVideoPosters(items);
                   const entry = { url: String(url), items };
                   recentCommentResponses.push(entry);
                   if (recentCommentResponses.length > 20)
@@ -497,6 +548,26 @@
       if (id) return id;
     }
     return null;
+  };
+  const syncVideoPosters = (root = document) => {
+    const cards = new Set([
+      ...(root.matches?.(".content") ? [root] : []),
+      root.closest?.(".content"),
+      ...(root.querySelectorAll?.(".content") || []),
+    ]);
+    cards.delete(null);
+    cards.delete(undefined);
+    for (const card of cards) {
+      const posters = videoPostersById.get(postIdForCard(card));
+      if (!posters) continue;
+      const videos = [...card.querySelectorAll(".andropov-video")].map(
+        (media) => media.querySelector("video"),
+      );
+      videos.forEach((video, index) => {
+        if (video && posters[index] && !video.poster)
+          video.poster = posters[index];
+      });
+    }
   };
   const saveViewedPosts = () =>
     set(
@@ -3157,6 +3228,7 @@
       passive: true,
     });
     prioritizePostImages();
+    syncVideoPosters();
     apply();
     window.addEventListener("resize", apply);
     let applyFrame = null;
@@ -3170,7 +3242,15 @@
     new MutationObserver((records) => {
       for (const { addedNodes } of records)
         for (const node of addedNodes)
-          if (node instanceof Element) prioritizePostImages(node);
+          if (node instanceof Element) {
+            prioritizePostImages(node);
+            if (
+              node.matches(".content, .andropov-video, video") ||
+              node.closest(".andropov-video") ||
+              node.querySelector(".andropov-video")
+            )
+              syncVideoPosters(node);
+          }
       scheduleApply();
     }).observe(document.body, {
       childList: true,

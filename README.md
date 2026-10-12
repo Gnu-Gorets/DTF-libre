@@ -9,6 +9,7 @@ Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open
 ## Image loading
 
 - Post media and gallery images load eagerly, including when new posts are added while scrolling. Avatar and other small images keep native lazy loading. Chromium handles image requests in parallel; no custom sequential download queue exists.
+- Video poster images are prefetched from feed data before playback. MP4 streams remain under DTF's lazy-loading behavior to avoid downloading unseen videos in full.
 - Post media uses asynchronous image decoding. The userscript does not add loading or failure placeholders; CDN/network failures remain visible as provided by DTF/browser.
 - The image quality setting selects responsive image sizes through `picture`/`srcset`, accounts for pixel density once, and limits each variant to 2560 px. Repeated DOM updates preserve selected URLs; resize recomputes sizes, disabling quality restores original URLs and styles. Classic galleries use uncropped original images to avoid blur when CSS enlarges them.
 - DOM updates share one animation-frame callback instead of repeatedly applying settings within one frame.

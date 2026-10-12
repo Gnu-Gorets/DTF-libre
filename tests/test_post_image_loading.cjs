@@ -14,7 +14,10 @@ assert.doesNotMatch(
   /prioritizePostImages\(/,
   "global image scan must not run on every apply",
 );
-assert.match(source, /prioritizePostImages\(\);\s*apply\(\);/);
+assert.match(
+  source,
+  /prioritizePostImages\(\);\s*syncVideoPosters\(\);\s*apply\(\);/,
+);
 const selector =
   ".block-wrapper--media .andropov-image img, .block-wrapper--gallery .andropov-image img";
 const mediaImage = { loading: "lazy", decoding: "sync" };
