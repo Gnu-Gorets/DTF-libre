@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.95
+// @version      0.0.96
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -2332,6 +2332,13 @@
       };
       requestPage();
     };
+    const prioritizePostImages = () =>
+      document
+        .querySelectorAll(".content img, .entry img")
+        .forEach((image) => {
+          image.loading = "eager";
+          image.decoding = "async";
+        });
     const setQuality = (enabled, galleryEnabled = false) => {
       document
         .querySelectorAll(
@@ -2448,6 +2455,7 @@
     };
 
     const apply = () => {
+      prioritizePostImages();
       document.documentElement.classList.toggle(
         "dtf-vm-header-width",
         Boolean(get("headerWidth", false)),
