@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.100
+// @version      0.0.101
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -541,37 +541,61 @@
       wakeRestore = null;
     };
   };
-  const loadExtraFeedPosts = async () => {
-    if (!get("feedExtraPosts", false) || !document.querySelector(".feed-page"))
-      return;
-    const initialCount = document.querySelectorAll(
-      ".feed-page .content-list .content",
-    ).length;
-    const multiplier = Math.max(
-      1,
-      Math.min(Number(get("feedPostMultiplier", 2)) || 2, 3),
+  let feedInitialPostCount = null;
+  let feedLoading = false;
+  const feedPosts = () => [
+    ...document.querySelectorAll(".feed-page .content-list .content"),
+  ];
+  const feedPostTarget = () =>
+    Math.ceil(
+      feedInitialPostCount *
+        Math.max(1, Math.min(Number(get("feedPostMultiplier", 2)) || 2, 3)),
     );
-    const targetCount = Math.ceil(initialCount * multiplier);
-    let count = initialCount;
-    while (count < targetCount) {
-      const previousCount = count;
-      const previousScroll = page.scrollY;
-      const triggerScroll = document.documentElement.scrollHeight;
-      page.scrollTo({ top: triggerScroll, behavior: "instant" });
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      page.scrollTo({ top: previousScroll, behavior: "instant" });
-      const deadline = Date.now() + 15000;
+  const syncFeedPostVisibility = () => {
+    if (feedInitialPostCount === null) return;
+    const target = get("feedExtraPosts", false)
+      ? feedPostTarget()
+      : Infinity;
+    feedPosts().forEach((post, index) =>
+      post.classList.toggle("dtf-vm-feed-post-hidden", index >= target),
+    );
+  };
+  const loadExtraFeedPosts = async () => {
+    const feed = document.querySelector(".feed-page");
+    if (!feed) return;
+    const initialCount = feedPosts().length;
+    if (feedInitialPostCount === null && initialCount)
+      feedInitialPostCount = initialCount;
+    syncFeedPostVisibility();
+    if (!get("feedExtraPosts", false) || feedLoading) return;
+    feedLoading = true;
+    try {
+      let count = feedPosts().length;
       while (
-        count <= previousCount &&
-        Date.now() < deadline &&
-        document.querySelector(".feed-page")
+        get("feedExtraPosts", false) &&
+        count < feedPostTarget() &&
+        feed.isConnected
       ) {
+        const previousCount = count;
+        const scroller = document.scrollingElement;
+        const previousScroll = scroller.scrollTop;
+        scroller.scrollTop = document.documentElement.scrollHeight;
         await new Promise((resolve) => setTimeout(resolve, 100));
-        count = document.querySelectorAll(
-          ".feed-page .content-list .content",
-        ).length;
+        scroller.scrollTop = previousScroll;
+        const deadline = Date.now() + 15000;
+        while (
+          count <= previousCount &&
+          Date.now() < deadline &&
+          feed.isConnected
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          count = feedPosts().length;
+        }
+        if (count <= previousCount) break;
+        syncFeedPostVisibility();
       }
-      if (count <= previousCount) break;
+    } finally {
+      feedLoading = false;
     }
   };
   const postIdForCard = (card) => {
@@ -799,7 +823,7 @@
     html.dtf-vm-disable-spoiler-blur .spoiler { display: none !important; }
     .dtf-vm-centered .content__blocks img, .dtf-vm-centered .content__blocks video { display: block; max-width: 100%; height: auto; margin: 0 auto; }
     .dtf-vm-centered .andropov-video-player:fullscreen video, .dtf-vm-centered .andropov-video-player:-moz-full-screen video { height: 100% !important; }
-    .dtf-vm-hashtag-hidden { display: none !important; }
+    .dtf-vm-hashtag-hidden, .dtf-vm-feed-post-hidden { display: none !important; }
     .dtf-vm-minimized-post .content__blocks, .dtf-vm-minimized-post .content__read-more, .dtf-vm-minimized-post .content-comment { display: none !important; }
     .dtf-vm-minimized-post .content-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dtf-vm-viewed-button { display: flex; align-items: center; order: -1; padding: 0; color: var(--theme-color-text-primary); background: var(--theme-color-button-minimal); border: 0; border-radius: 10px; cursor: pointer; }
@@ -2892,6 +2916,8 @@
         set("feedPostMultiplier", multiplier);
         event.target.closest("label").querySelector("output").value =
           `${multiplier}×`;
+        syncFeedPostVisibility();
+        void loadExtraFeedPosts();
       };
       overlay.querySelector("[name=topicLimit]").oninput = (event) => {
         set("topicLimit", Number(event.target.value));
@@ -2978,6 +3004,10 @@
         overlay.querySelector(`[name=${name}]`).onchange = (event) => {
           set(name, event.target.checked);
           syncDependencies();
+          if (name === "feedExtraPosts") {
+            syncFeedPostVisibility();
+            void loadExtraFeedPosts();
+          }
           if (
             [
               "expandComments",
