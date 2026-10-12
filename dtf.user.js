@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.101
+// @version      0.0.102
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -579,8 +579,18 @@
         const previousCount = count;
         const scroller = document.scrollingElement;
         const previousScroll = scroller.scrollTop;
+        const loader = feed.querySelector(".content-list__loader");
         scroller.scrollTop = document.documentElement.scrollHeight;
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        const triggerDeadline = Date.now() + 3000;
+        while (
+          count <= previousCount &&
+          (!loader || loader.style.display === "none") &&
+          Date.now() < triggerDeadline &&
+          feed.isConnected
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          count = feedPosts().length;
+        }
         scroller.scrollTop = previousScroll;
         const deadline = Date.now() + 15000;
         while (
