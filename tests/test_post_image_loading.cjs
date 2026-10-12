@@ -6,6 +6,15 @@ const source = fs.readFileSync("dtf.user.js", "utf8");
 const start = source.indexOf("    const prioritizePostImages =");
 const end = source.indexOf("    const setQuality =", start);
 assert(start > 0 && end > start);
+const applyStart = source.indexOf("    const apply = () => {");
+const applyEnd = source.indexOf("    const openSettings =", applyStart);
+assert(applyStart > 0 && applyEnd > applyStart);
+assert.doesNotMatch(
+  source.slice(applyStart, applyEnd),
+  /prioritizePostImages\(/,
+  "global image scan must not run on every apply",
+);
+assert.match(source, /prioritizePostImages\(\);\s*apply\(\);/);
 const selector =
   ".block-wrapper--media .andropov-image img, .block-wrapper--gallery .andropov-image img";
 const mediaImage = { loading: "lazy", decoding: "sync" };

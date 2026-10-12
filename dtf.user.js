@@ -2460,7 +2460,6 @@
     };
 
     const apply = () => {
-      prioritizePostImages();
       document.documentElement.classList.toggle(
         "dtf-vm-header-width",
         Boolean(get("headerWidth", false)),
