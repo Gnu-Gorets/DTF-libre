@@ -12,9 +12,24 @@ async function createFeed({
   multiplier,
   initialCount = 24,
   triggerDelay = 150,
+  loaderHideDelay = 300,
   succeeds = true,
 }) {
   const cards = [];
+  const mutationObservers = [];
+  class MockMutationObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.active = false;
+      mutationObservers.push(this);
+    }
+    observe() {
+      this.active = true;
+    }
+    disconnect() {
+      this.active = false;
+    }
+  }
   const makeCard = () => {
     const classes = new Set();
     return {
@@ -34,6 +49,8 @@ async function createFeed({
   let triggerWaits = 0;
   let requestStarted = false;
   let responseDone = false;
+  let loaderHiddenAt = 0;
+  let scrolledWhileLoaderVisible = false;
   const loader = { style: { display: "none" } };
   const feed = {
     isConnected: true,
@@ -48,6 +65,7 @@ async function createFeed({
       set scrollTop(value) {
         scrollTop = value;
         if (value > 0) {
+          scrolledWhileLoaderVisible ||= loader.style.display !== "none";
           triggerWaits = 0;
           requestStarted = false;
           responseDone = false;
@@ -55,6 +73,7 @@ async function createFeed({
         }
       },
     },
+    body: {},
     querySelector: (selector) => (selector === ".feed-page" ? feed : null),
     querySelectorAll: () => cards,
   };
@@ -62,9 +81,13 @@ async function createFeed({
   const context = {
     document,
     settings,
+    MutationObserver: MockMutationObserver,
+    clearTimeout: () => {},
     get: (key, fallback) => settings[key] ?? fallback,
     setTimeout: (callback, delay) => {
       now += delay;
+      if (responseDone && now >= loaderHiddenAt)
+        loader.style.display = "none";
       if (scrollTop > 0 && !requestStarted) {
         triggerWaits += delay;
         if (triggerWaits >= triggerDelay) {
@@ -73,7 +96,7 @@ async function createFeed({
         }
       } else if (scrollTop === 0 && requestStarted && !responseDone) {
         responseDone = true;
-        loader.style.display = "none";
+        loaderHiddenAt = now + loaderHideDelay;
         if (succeeds) {
           for (let i = 0; i < 12; i++) cards.push(makeCard());
           pagesLoaded++;
@@ -95,6 +118,13 @@ async function createFeed({
     pagesLoaded: () => pagesLoaded,
     scrollTop: () => scrollTop,
     triggerWaits: () => triggerWaits,
+    scrolledWhileLoaderVisible: () => scrolledWhileLoaderVisible,
+    addInitialPosts(count) {
+      for (let i = 0; i < count; i++) cards.push(makeCard());
+      mutationObservers
+        .filter((observer) => observer.active)
+        .forEach((observer) => observer.callback());
+    },
   };
 }
 
@@ -104,6 +134,11 @@ async function createFeed({
   assert.equal(feed.cards.length, 48, "loads to 2x baseline");
   assert.equal(feed.pagesLoaded(), 2);
   assert.ok(feed.triggerWaits() >= 150, "waits for delayed loader trigger");
+  assert.equal(
+    feed.scrolledWhileLoaderVisible(),
+    false,
+    "waits for previous loader to hide before retriggering",
+  );
   assert.equal(feed.scrollTop(), 0, "restores page scroll");
 
   feed.settings.feedPostMultiplier = 3;
@@ -143,6 +178,18 @@ async function createFeed({
     0,
     "disabling extra loading shows all loaded posts",
   );
+
+  const lateFeed = await createFeed({
+    enabled: true,
+    multiplier: 3,
+    initialCount: 0,
+  });
+  await lateFeed.context.run();
+  assert.equal(lateFeed.cards.length, 0, "waits for initial feed response");
+  lateFeed.addInitialPosts(24);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(lateFeed.cards.length, 72, "loads after initial cards arrive");
+  assert.equal(lateFeed.pagesLoaded(), 4);
 
   const failedFeed = await createFeed({
     enabled: true,

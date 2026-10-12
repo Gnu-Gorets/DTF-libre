@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.102
+// @version      0.0.104
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -542,10 +542,29 @@
     };
   };
   let feedInitialPostCount = null;
+  let feedInitialObserver = null;
+  let feedInitialTimer = null;
   let feedLoading = false;
   const feedPosts = () => [
     ...document.querySelectorAll(".feed-page .content-list .content"),
   ];
+  const waitForInitialFeedPosts = () => {
+    if (feedInitialObserver || !document.body) return;
+    feedInitialObserver = new MutationObserver(() => {
+      if (!feedPosts().length) return;
+      clearTimeout(feedInitialTimer);
+      feedInitialTimer = setTimeout(() => {
+        feedInitialObserver?.disconnect();
+        feedInitialObserver = null;
+        feedInitialTimer = null;
+        void loadExtraFeedPosts();
+      }, 100);
+    });
+    feedInitialObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  };
   const feedPostTarget = () =>
     Math.ceil(
       feedInitialPostCount *
@@ -562,10 +581,19 @@
   };
   const loadExtraFeedPosts = async () => {
     const feed = document.querySelector(".feed-page");
-    if (!feed) return;
+    if (!feed) {
+      if (get("feedExtraPosts", false)) waitForInitialFeedPosts();
+      return;
+    }
     const initialCount = feedPosts().length;
-    if (feedInitialPostCount === null && initialCount)
+    if (feedInitialPostCount === null) {
+      if (feedInitialObserver) return;
+      if (!initialCount) {
+        if (get("feedExtraPosts", false)) waitForInitialFeedPosts();
+        return;
+      }
       feedInitialPostCount = initialCount;
+    }
     syncFeedPostVisibility();
     if (!get("feedExtraPosts", false) || feedLoading) return;
     feedLoading = true;
@@ -578,8 +606,17 @@
       ) {
         const previousCount = count;
         const scroller = document.scrollingElement;
-        const previousScroll = scroller.scrollTop;
         const loader = feed.querySelector(".content-list__loader");
+        const loaderDeadline = Date.now() + 3000;
+        while (
+          loader &&
+          loader.style.display !== "none" &&
+          Date.now() < loaderDeadline &&
+          feed.isConnected
+        )
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        if (loader && loader.style.display !== "none") break;
+        const previousScroll = scroller.scrollTop;
         scroller.scrollTop = document.documentElement.scrollHeight;
         const triggerDeadline = Date.now() + 3000;
         while (
