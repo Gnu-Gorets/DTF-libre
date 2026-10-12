@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.96
+// @version      0.0.97
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -2332,13 +2332,18 @@
       };
       requestPage();
     };
-    const prioritizePostImages = () =>
-      document
-        .querySelectorAll(".content img, .entry img")
-        .forEach((image) => {
-          image.loading = "eager";
-          image.decoding = "async";
-        });
+    const prioritizePostImages = (root = document) => {
+      const selector =
+        ".block-wrapper--media .andropov-image img, .block-wrapper--gallery .andropov-image img";
+      const images = [
+        ...(root.matches?.(selector) ? [root] : []),
+        ...(root.querySelectorAll?.(selector) || []),
+      ];
+      images.forEach((image) => {
+        image.loading = "eager";
+        image.decoding = "async";
+      });
+    };
     const setQuality = (enabled, galleryEnabled = false) => {
       document
         .querySelectorAll(
@@ -3152,6 +3157,7 @@
     window.addEventListener("scroll", pauseVideosOutsideViewport, {
       passive: true,
     });
+    prioritizePostImages();
     apply();
     window.addEventListener("resize", apply);
     let applyFrame = null;
@@ -3162,7 +3168,12 @@
         apply();
       });
     };
-    new MutationObserver(scheduleApply).observe(document.body, {
+    new MutationObserver((records) => {
+      for (const { addedNodes } of records)
+        for (const node of addedNodes)
+          if (node instanceof Element) prioritizePostImages(node);
+      scheduleApply();
+    }).observe(document.body, {
       childList: true,
       subtree: true,
     });
