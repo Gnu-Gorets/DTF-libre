@@ -100,9 +100,12 @@ const addedVideo = {
 const mappingStart = source.indexOf("  const postIdForCard =");
 const mappingEnd = source.indexOf("  const saveViewedPosts =", mappingStart);
 assert(mappingStart >= 0 && mappingEnd > mappingStart);
-vmContext.postIdFromUrl = () => "123";
+vmContext.postIdFromUrl = (value) =>
+  String(value).match(/\/[^/]+\/(\d+)/)?.[1] || null;
 vm.runInContext(
-  `${source.slice(mappingStart, mappingEnd)}\nglobalThis.sync = syncVideoPosters;`,
+  `${source.slice(mappingStart, mappingEnd)}
+    globalThis.sync = syncVideoPosters;
+    globalThis.rememberInitial = rememberInitialVideoPosters;`,
   vmContext,
 );
 vmContext.sync(addedVideo);
@@ -112,4 +115,55 @@ assert.equal(context.posterHelpers.videoPostersById.has("123"), true);
 video.poster = "";
 vmContext.sync(addedVideo);
 assert.equal(video.poster, posters.posters[0], "poster recovers after media rerender");
-console.log("OK: video posters preload from feed data and attach to dynamically inserted players");
+
+const initialEntry = {
+  type: "entry",
+  data: {
+    id: 456,
+    blocks: [
+      {
+        type: "media",
+        data: {
+          items: [
+            {
+              image: {
+                data: {
+                  uuid: "12345678-1234-5678-9abc-123456789abc",
+                  width: 480,
+                  isVideo: true,
+                },
+              },
+            },
+          ],
+        },
+      },
+    ],
+  },
+};
+const unrenderedEntry = { ...initialEntry, data: { ...initialEntry.data, id: 999 } };
+let initialCard;
+const initialLink = {
+  href: "https://dtf.ru/topic/456-test",
+  closest: () => initialCard,
+};
+initialCard = {
+  querySelectorAll: (selector) =>
+    selector === ".content-header a[href]" ? [initialLink] : [],
+};
+context.page = {
+  __INITIAL_STATE__: {
+    "feed@popular": { items: [initialEntry, unrenderedEntry] },
+  },
+};
+context.document.querySelectorAll = (selector) =>
+  selector === ".content" || selector === ".feed-page .content"
+    ? [initialCard]
+    : [];
+vmContext.rememberInitial();
+assert.equal(context.posterHelpers.videoPostersById.has("456"), true);
+assert.equal(context.posterHelpers.videoPostersById.has("999"), false);
+assert.match(
+  source,
+  /addEventListener\("DOMContentLoaded", rememberInitialVideoPosters/,
+);
+console.log("OK: posters preload from API and SSR feed for rendered video cards");

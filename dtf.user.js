@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.98
+// @version      0.0.99
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -568,6 +568,18 @@
           video.poster = posters[index];
       });
     }
+  };
+  // Initial feed is server-rendered, so it bypasses the fetch observer.
+  const rememberInitialVideoPosters = () => {
+    const cardIds = new Set(
+      [...document.querySelectorAll(".feed-page .content")]
+        .map(postIdForCard)
+        .filter(Boolean),
+    );
+    const items = Object.values(page.__INITIAL_STATE__ || {})
+      .flatMap((feed) => (Array.isArray(feed?.items) ? feed.items : []))
+      .filter((item) => cardIds.has(String(item.data?.id ?? "")));
+    rememberVideoPosters(items);
   };
   const saveViewedPosts = () =>
     set(
@@ -3229,6 +3241,11 @@
     });
     prioritizePostImages();
     syncVideoPosters();
+    if (document.readyState === "loading")
+      page.addEventListener("DOMContentLoaded", rememberInitialVideoPosters, {
+        once: true,
+      });
+    else rememberInitialVideoPosters();
     apply();
     window.addEventListener("resize", apply);
     let applyFrame = null;

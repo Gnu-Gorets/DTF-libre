@@ -16,7 +16,7 @@ assert.doesNotMatch(
 );
 assert.match(
   source,
-  /prioritizePostImages\(\);\s*syncVideoPosters\(\);\s*apply\(\);/,
+  /prioritizePostImages\(\);\s*syncVideoPosters\(\);\s*if \(document\.readyState === "loading"\)[\s\S]*?else rememberInitialVideoPosters\(\);\s*apply\(\);/,
 );
 const selector =
   ".block-wrapper--media .andropov-image img, .block-wrapper--gallery .andropov-image img";
