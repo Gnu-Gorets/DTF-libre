@@ -25,6 +25,9 @@ async function createFeed({
   loaderHideDelay = 300,
   succeeds = true,
   initialScrollTop = 0,
+  lateInitialCount = 0,
+  lateInitialAt = 150,
+  changeMultiplierAfterPage = null,
 }) {
   const cards = [];
   const mutationObservers = [];
@@ -63,6 +66,7 @@ async function createFeed({
   let responseDone = false;
   let loaderHiddenAt = 0;
   let scrolledWhileLoaderVisible = false;
+  let lateInitialAdded = false;
   let wasLoaderFixed = false;
   const scrollListeners = {};
   const wrapperProperties = new Map([
@@ -124,6 +128,10 @@ async function createFeed({
     get: (key, fallback) => settings[key] ?? fallback,
     setTimeout: (callback, delay) => {
       now += delay;
+      if (!lateInitialAdded && lateInitialCount && now >= lateInitialAt) {
+        for (let i = 0; i < lateInitialCount; i++) cards.push(makeCard());
+        lateInitialAdded = true;
+      }
       if (responseDone && now >= loaderHiddenAt)
         loader.style.display = "none";
       const loaderFixed =
@@ -150,6 +158,8 @@ async function createFeed({
         if (succeeds) {
           for (let i = 0; i < 12; i++) cards.push(makeCard());
           pagesLoaded++;
+          if (changeMultiplierAfterPage?.page === pagesLoaded)
+            settings.feedPostMultiplier = changeMultiplierAfterPage.multiplier;
         }
       }
       callback();
@@ -243,6 +253,19 @@ async function createFeed({
     "disabling extra loading shows all loaded posts",
   );
 
+  const lateBaselineFeed = await createFeed({
+    enabled: true,
+    multiplier: 2,
+    lateInitialCount: 12,
+  });
+  await lateBaselineFeed.context.run();
+  assert.equal(
+    lateBaselineFeed.cards.length,
+    72,
+    "late initial posts are included in the baseline before applying 2x",
+  );
+  assert.equal(lateBaselineFeed.pagesLoaded(), 3);
+
   const lateFeed = await createFeed({
     enabled: true,
     multiplier: 3,
@@ -254,6 +277,31 @@ async function createFeed({
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(lateFeed.cards.length, 72, "loads after initial cards arrive");
   assert.equal(lateFeed.pagesLoaded(), 4);
+
+  const increasedWhileLoading = await createFeed({
+    enabled: true,
+    multiplier: 2,
+    changeMultiplierAfterPage: { page: 1, multiplier: 3 },
+  });
+  await increasedWhileLoading.context.run();
+  assert.equal(increasedWhileLoading.cards.length, 72);
+  assert.equal(increasedWhileLoading.pagesLoaded(), 4);
+
+  const decreasedWhileLoading = await createFeed({
+    enabled: true,
+    multiplier: 3,
+    changeMultiplierAfterPage: { page: 2, multiplier: 2 },
+  });
+  await decreasedWhileLoading.context.run();
+  assert.equal(decreasedWhileLoading.cards.length, 48);
+  assert.equal(decreasedWhileLoading.pagesLoaded(), 2);
+  assert.equal(
+    decreasedWhileLoading.cards.filter((card) =>
+      card.classList.contains("dtf-vm-feed-post-hidden"),
+    ).length,
+    0,
+    "does not load then hide a page beyond the current slider target",
+  );
 
   const bottomFeed = await createFeed({ enabled: true, multiplier: 2 });
   await bottomFeed.context.run();

@@ -639,6 +639,24 @@
       subtree: true,
     });
   };
+  const waitForInitialFeedReady = async (feed) => {
+    const loader = feed.querySelector(".content-list__loader");
+    let count = feedPosts().length;
+    let stableSince = Date.now();
+    const deadline = stableSince + 3000;
+    while (feed.isConnected && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const nextCount = feedPosts().length;
+      if (nextCount !== count) {
+        count = nextCount;
+        stableSince = Date.now();
+      }
+      if (loader?.style.display && loader.style.display !== "none")
+        stableSince = Date.now();
+      else if (Date.now() - stableSince >= 250) break;
+    }
+    return feedPosts().length;
+  };
   const feedPostTarget = () =>
     Math.ceil(
       feedInitialPostCount *
@@ -698,19 +716,24 @@
         if (get("feedExtraPosts", false)) waitForInitialFeedPosts();
         return;
       }
-      feedInitialPostCount = initialCount;
     }
-    if (target === null) target = feedPostTarget();
     if (syncVisibility) syncFeedPostVisibility();
     if (!get("feedExtraPosts", false) || feedLoading) return;
+    const explicitTarget = target !== null;
     feedLoading = true;
     wakeRestore?.();
-    feed.classList.add("dtf-vm-feed-loading");
+    let loaderClassAdded = false;
     try {
+      if (feedInitialPostCount === null)
+        feedInitialPostCount = await waitForInitialFeedReady(feed);
+      if (!get("feedExtraPosts", false)) return;
+      if (syncVisibility) syncFeedPostVisibility();
+      feed.classList.add("dtf-vm-feed-loading");
+      loaderClassAdded = true;
       let count = feedPosts().length;
       while (
         get("feedExtraPosts", false) &&
-        count < target &&
+        count < (explicitTarget ? target : feedPostTarget()) &&
         feed.isConnected
       ) {
         const previousCount = count;
@@ -753,7 +776,7 @@
         if (syncVisibility) syncFeedPostVisibility();
       }
     } finally {
-      feed.classList.remove("dtf-vm-feed-loading");
+      if (loaderClassAdded) feed.classList.remove("dtf-vm-feed-loading");
       feedLoading = false;
     }
   };
