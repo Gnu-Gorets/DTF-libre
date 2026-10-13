@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = fs.readFileSync("dtf.user.js", "utf8");
-const start = source.indexOf("  const resetFeedScrollOnReload =");
+const start = source.indexOf("  const resetScrollOnReload =");
 const end = source.indexOf("  const setPhotoSwipeZoomLevels =", start);
 assert(start > 0 && end > start);
 
@@ -23,7 +23,7 @@ const makePage = (pathname, navigationType) => {
       scrollCalls.push(args);
     },
   };
-  vm.runInNewContext(source.slice(start, end), { page });
+  vm.runInNewContext(source.slice(start, end), { page, get: () => true });
   return { page, listeners, scrollCalls };
 };
 
@@ -47,10 +47,20 @@ assert.equal(navigatedFeed.listeners.pageshow, undefined);
 assert.deepEqual(navigatedFeed.scrollCalls, []);
 
 const reloadedMyFeed = makePage("/my", "reload");
-assert.equal(reloadedMyFeed.page.history.scrollRestoration, "auto");
-assert.equal(reloadedMyFeed.listeners.pageshow, undefined);
+assert.equal(reloadedMyFeed.page.history.scrollRestoration, "manual");
+assert.equal(reloadedMyFeed.listeners.pageshow.options.once, true);
 
 const reloadedPost = makePage("/post/123", "reload");
-assert.equal(reloadedPost.page.history.scrollRestoration, "auto");
-assert.equal(reloadedPost.listeners.pageshow, undefined);
-console.log("OK: refresh resets public feed scroll; other navigation is untouched");
+assert.equal(reloadedPost.page.history.scrollRestoration, "manual");
+assert.equal(reloadedPost.listeners.pageshow.options.once, true);
+reloadedPost.listeners.pageshow.callback();
+assert.deepEqual(reloadedPost.scrollCalls, [[0, 0]]);
+
+const reloadedProfile = makePage("/user/123", "reload");
+assert.equal(reloadedProfile.page.history.scrollRestoration, "manual");
+assert.equal(reloadedProfile.listeners.pageshow.options.once, true);
+
+const backNavigation = makePage("/", "back_forward");
+assert.equal(backNavigation.page.history.scrollRestoration, "auto");
+assert.equal(backNavigation.listeners.pageshow, undefined);
+console.log("OK: every DTF reload resets scroll; ordinary/back navigation is untouched");

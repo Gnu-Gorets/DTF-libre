@@ -13,16 +13,13 @@ let pending;
 let exitObserver;
 let observedTarget;
 let cleared = 0;
-const parent = {
-  style: { transform: "" },
-};
+const feed = { style: { transform: "" } };
 const list = {
   querySelector: () => (collapsed ? {} : null),
   querySelectorAll: () => Array(postCount).fill(null),
 };
-const loader = {
+const loaderWrapper = {
   style: {
-    display: "none",
     transform: "translateY(10px)",
     getPropertyValue(name) {
       return this[name] || "";
@@ -32,8 +29,12 @@ const loader = {
       this[name] = value;
     },
   },
-  parentElement: parent,
+  parentElement: feed,
   getBoundingClientRect: () => ({ top, bottom: top + 1 }),
+};
+const loader = {
+  style: { display: "none" },
+  parentElement: loaderWrapper,
   closest: () => list,
 };
 const context = {
@@ -63,44 +64,44 @@ vm.runInNewContext(
   context,
 );
 context.wake();
-assert.equal(loader.style.transform, "translateY(600vh)");
-assert.equal(parent.style.transform, "", "never move visible feed parent");
-assert.equal(observedTarget, loader, "observe only invisible loader sentinel");
+assert.equal(loaderWrapper.style.transform, "translateY(600vh)");
+assert.equal(feed.style.transform, "", "do not move feed cards");
+assert.equal(observedTarget, loaderWrapper, "move native loader wrapper");
 exitObserver.callback([{ isIntersecting: true }]);
 assert.equal(
-  loader.style.transform,
+  loaderWrapper.style.transform,
   "translateY(600vh)",
   "stay outside until observer confirms exit",
 );
 exitObserver.callback([{ isIntersecting: false }]);
 assert.equal(
-  loader.style.transform,
+  loaderWrapper.style.transform,
   "translateY(10px)",
   "restore previous loader transform when observer confirms exit",
 );
 assert.equal(cleared, 1, "cancel fallback after observer callback");
 context.wake();
-assert.equal(loader.style.transform, "translateY(10px)", "only once per batch");
+assert.equal(loaderWrapper.style.transform, "translateY(10px)", "only once per batch");
 postCount = 24;
 context.wake();
-assert.equal(loader.style.transform, "translateY(600vh)", "retry for new posts");
+assert.equal(loaderWrapper.style.transform, "translateY(600vh)", "retry for new posts");
 pending();
 assert.equal(
-  loader.style.transform,
+  loaderWrapper.style.transform,
   "translateY(10px)",
   "fallback restores when callback is missing",
 );
-assert.equal(parent.style.transform, "", "parent stays in place through restore");
+assert.equal(feed.style.transform, "", "feed cards stay in place through restore");
 postCount = 36;
 loader.style.display = "block";
 context.wake();
-assert.equal(loader.style.transform, "translateY(10px)", "never wake during loading");
+assert.equal(loaderWrapper.style.transform, "translateY(10px)", "never wake during loading");
 loader.style.display = "none";
 top = 7000;
 context.wake();
-assert.equal(loader.style.transform, "translateY(10px)", "never wake outside observer range");
+assert.equal(loaderWrapper.style.transform, "translateY(10px)", "never wake outside observer range");
 top = 1100;
 collapsed = false;
 context.wake();
-assert.equal(loader.style.transform, "translateY(10px)", "never wake without collapsed posts");
-console.log("OK: collapsed feed retries pagination without moving visible posts");
+assert.equal(loaderWrapper.style.transform, "translateY(10px)", "never wake without collapsed posts");
+console.log("OK: collapsed feed retries pagination by moving only loader wrapper");

@@ -19,6 +19,8 @@ async function createFeed({
   triggerDelay = 150,
   loaderHideDelay = 300,
   succeeds = true,
+  initialScrollTop = 0,
+  resetScrollOnReload = false,
 }) {
   const cards = [];
   const mutationObservers = [];
@@ -49,7 +51,7 @@ async function createFeed({
   };
   for (let i = 0; i < initialCount; i++) cards.push(makeCard());
   let pagesLoaded = 0;
-  let scrollTop = 0;
+  let scrollTop = initialScrollTop;
   let now = 0;
   let triggerWaits = 0;
   let requestStarted = false;
@@ -87,6 +89,7 @@ async function createFeed({
   const context = {
     document,
     settings,
+    resetFeedLoadScroll: resetScrollOnReload,
     window: {
       innerHeight: 1000,
       addEventListener: (name, callback) => {
@@ -243,6 +246,19 @@ async function createFeed({
   disabledFeed.reachEnd();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(disabledFeed.pagesLoaded(), 0, "disabled setting stays native");
+
+  const reloadedFeed = await createFeed({
+    enabled: true,
+    multiplier: 2,
+    initialScrollTop: 1800,
+    resetScrollOnReload: true,
+  });
+  await reloadedFeed.context.run();
+  assert.equal(
+    reloadedFeed.scrollTop(),
+    0,
+    "initial extra load must not restore stale pre-reload scroll",
+  );
 
   const failedFeed = await createFeed({
     enabled: true,

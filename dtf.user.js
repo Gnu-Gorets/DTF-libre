@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.96
+// @version      0.0.103
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -96,11 +96,11 @@
   const syncHashtagCards = () =>
     document.querySelectorAll(".content").forEach(syncHashtagCard);
   const page = unsafeWindow;
-  const resetFeedScrollOnReload = () => {
-    const path = page.location.pathname.replace(/\/+$/, "") || "/";
-    if (!["/", "/new", "/popular"].includes(path)) return;
+  let resetFeedLoadScroll = false;
+  const resetScrollOnReload = () => {
     if (page.performance.getEntriesByType("navigation")[0]?.type !== "reload")
       return;
+    resetFeedLoadScroll = Boolean(get("feedExtraPosts", false));
     const previousRestoration = page.history.scrollRestoration;
     page.history.scrollRestoration = "manual";
     page.addEventListener("pageshow", () => page.scrollTo(0, 0), {
@@ -112,7 +112,7 @@
       { once: true },
     );
   };
-  resetFeedScrollOnReload();
+  resetScrollOnReload();
   const setPhotoSwipeZoomLevels = ({ zoomLevels, slideData }) => {
     const width = Number(slideData.w || slideData.width);
     const height = Number(slideData.h || slideData.height);
@@ -589,7 +589,7 @@
       wakeRestore
     )
       return;
-    const target = loader;
+    const target = loader.parentElement;
     const rect = target.getBoundingClientRect();
     if (rect.top > innerHeight * 6 || rect.bottom < -innerHeight * 2) return;
     const count = list.querySelectorAll(".content").length;
@@ -690,7 +690,8 @@
         )
           await new Promise((resolve) => setTimeout(resolve, 50));
         if (loader && loader.style.display !== "none") break;
-        const previousScroll = scroller.scrollTop;
+        const previousScroll = resetFeedLoadScroll ? 0 : scroller.scrollTop;
+        resetFeedLoadScroll = false;
         scroller.scrollTop = document.documentElement.scrollHeight;
         const triggerDeadline = Date.now() + 3000;
         while (
@@ -718,6 +719,7 @@
       }
     } finally {
       feedLoading = false;
+      resetFeedLoadScroll = false;
     }
   };
   window.addEventListener(
