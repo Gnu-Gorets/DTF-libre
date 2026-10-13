@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.100
+// @version      0.0.101
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -690,28 +690,63 @@
       post.classList.toggle("dtf-vm-feed-post-hidden", index >= target),
     );
   };
-  const placeLoaderInViewport = (loader) => {
+  const placeLoaderInViewport = async (loader) => {
     const target = loader?.parentElement;
     if (!target?.style?.setProperty || !target.getBoundingClientRect)
       return () => {};
-    const rect = target.getBoundingClientRect();
-    const offset = Math.round(
-      window.innerHeight / 2 - (rect.top + rect.bottom) / 2,
-    );
     const properties = ["translate", "transition"];
     const previous = properties.map((property) => [
       property,
       target.style.getPropertyValue(property),
       target.style.getPropertyPriority(property),
     ]);
-    target.style.setProperty("transition", "none", "important");
-    target.style.setProperty("translate", `0 ${offset}px`, "important");
-    return () =>
+    const restore = () =>
       previous.forEach(([property, value, priority]) =>
         value
           ? target.style.setProperty(property, value, priority)
           : target.style.removeProperty(property),
       );
+    try {
+      const rect = target.getBoundingClientRect();
+      // Moving already-intersecting loader inside cannot trigger another entry.
+      let offset = Math.round(-window.innerHeight * 4 - rect.bottom);
+      target.style.setProperty("transition", "none", "important");
+      target.style.setProperty("translate", `0 ${offset}px`, "important");
+      const exited = await new Promise((resolve, reject) => {
+        const observer = new IntersectionObserver(
+          ([entry]) => {
+            if (!entry.isIntersecting) finish(true);
+          },
+          { rootMargin: "200% 0px" },
+        );
+        const timer = setTimeout(() => finish(false), 500);
+        function finish(exited) {
+          observer.disconnect();
+          clearTimeout(timer);
+          resolve(exited);
+        }
+        try {
+          observer.observe(target);
+        } catch (error) {
+          observer.disconnect();
+          clearTimeout(timer);
+          reject(error);
+        }
+      });
+      if (!exited) {
+        restore();
+        return () => {};
+      }
+      const moved = target.getBoundingClientRect();
+      offset += Math.round(
+        window.innerHeight / 2 - (moved.top + moved.bottom) / 2,
+      );
+      target.style.setProperty("translate", `0 ${offset}px`, "important");
+      return restore;
+    } catch (error) {
+      restore();
+      throw error;
+    }
   };
   const loadExtraFeedPosts = async (target = null, syncVisibility = true) => {
     const feed = document.querySelector(".feed-page");
@@ -760,7 +795,7 @@
         )
           await new Promise((resolve) => setTimeout(resolve, 50));
         if (loader && loader.style.display !== "none") break;
-        const restoreLoader = placeLoaderInViewport(loader);
+        const restoreLoader = await placeLoaderInViewport(loader);
         const triggerDeadline = Date.now() + 3000;
         try {
           while (

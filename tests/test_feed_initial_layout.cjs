@@ -13,7 +13,7 @@ assert(!source.includes('content: "Загрузка…"'), "does not add loading
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-feed-layout-"));
 const fixture = `<!doctype html><html><head>
 <style>${css}</style><style>html{overflow-y:scroll}body{margin:0}.content,.content-skeleton{height:200px}header{height:60px}</style>
-</head><body><header id="header"><button>Write</button></header><main class="feed-page"><div id="feed-header">New</div><div class="content-list"><div id="skeleton"><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div></div><div id="posts"></div><div id="trigger"><div class="content-list__loader" style="display:none"></div></div></div></main>
+</head><body data-fixture="expanded"><header id="header"><button>Write</button></header><main class="feed-page"><div id="feed-header">New</div><div class="content-list"><div id="skeleton"><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div></div><div id="posts"></div><div id="trigger"><div class="content-list__loader" style="display:none"></div></div></div></main>
 <script>
 const get = (key, fallback) => ({feedExtraPosts:true, feedPostMultiplier:3})[key] ?? fallback;
 let wakeRestore = null;
@@ -83,6 +83,47 @@ const completion = setInterval(() => {
 addEventListener('error', event => { document.body.dataset.result = 'FAIL: ' + event.message; });
 </script></body></html>`;
 fs.writeFileSync(path.join(dir, "test.html"), fixture);
+const collapsedFixture = `<!doctype html><html><head><style>${css}</style><style>body{margin:0}.content{height:180px}</style></head>
+<body data-fixture="collapsed"><main class="feed-page"><div class="content-list"><div id="posts"></div><div id="trigger"><div class="content-list__loader" style="display:none"></div></div></div></main>
+<script>
+const get = (key, fallback) => ({feedExtraPosts:true, feedPostMultiplier:3})[key] ?? fallback;
+let wakeRestore = null;
+const posts = document.querySelector('#posts'), loader = document.querySelector('.content-list__loader');
+let requests = 0, busy = false;
+const intersections = [];
+const nativeObserver = new IntersectionObserver(([entry]) => {
+  if (document.documentElement.scrollHeight > Math.ceil(Math.max(innerHeight, posts.children.length * 180 + 1))) throw Error('temporary loader movement enlarged document');
+  intersections.push(entry.isIntersecting);
+  if (!entry.isIntersecting || busy) return;
+  busy = true; requests++; loader.style.display = 'block';
+  setTimeout(() => {
+    for (let i = 0; i < 12; i++) {
+      const card = document.createElement('article');
+      card.className = 'content dtf-vm-minimized-post'; posts.append(card);
+    }
+    busy = false; loader.style.display = 'none';
+  }, 100);
+}, {rootMargin:'200% 0px'});
+${source.slice(start, end)}
+syncInitialFeedGate();
+void loadExtraFeedPosts();
+nativeObserver.observe(document.querySelector('#trigger'));
+const completion = setInterval(() => {
+  if (feedInitialPostCount === null || feedLoading || initialFeedPending) return;
+  clearInterval(completion);
+  try {
+    if (feedInitialPostCount !== 12 || feedPosts().length !== 36 || requests !== 3) throw Error('collapsed feed stopped: baseline=' + feedInitialPostCount + ', posts=' + feedPosts().length + ', requests=' + requests);
+    if (!intersections.includes(false)) throw Error('native loader never exited observer');
+    if (feedPosts().some(card => getComputedStyle(card).visibility !== 'visible' || !card.classList.contains('dtf-vm-minimized-post'))) throw Error('collapsed cards hidden or expanded');
+    if (scrollY !== 0) throw Error('viewport moved');
+    const target = loader.parentElement;
+    if (target.style.translate || target.style.transition || document.documentElement.classList.contains('dtf-vm-feed-pending')) throw Error('temporary state not restored');
+    document.body.dataset.result = 'PASS';
+  } catch (error) { document.body.dataset.result = 'FAIL: ' + error.message; }
+}, 50);
+addEventListener('error', event => { document.body.dataset.result = 'FAIL: ' + event.message; });
+</script></body></html>`;
+fs.writeFileSync(path.join(dir, "collapsed.html"), collapsedFixture);
 (async () => {
   const profile = path.join(dir, "profile");
   const browser = spawn("/usr/bin/chromium", [
@@ -106,17 +147,22 @@ fs.writeFileSync(path.join(dir, "test.html"), fixture);
       const message = JSON.parse(event.data);
       if (message.id) { pending.get(message.id)?.(message); pending.delete(message.id); }
     });
-    const evaluate = expression => new Promise(resolve => {
+    const command = (method, params) => new Promise(resolve => {
       pending.set(++id, resolve);
-      socket.send(JSON.stringify({id, method:"Runtime.evaluate", params:{expression, returnByValue:true}}));
+      socket.send(JSON.stringify({id, method, params}));
     });
-    let result;
-    while (!result && Date.now() < deadline) {
-      result = (await evaluate("document.body?.dataset.result")).result?.result?.value;
-      await pause();
+    const evaluate = expression => command("Runtime.evaluate", {expression, returnByValue:true});
+    for (const name of ["expanded", "collapsed"]) {
+      if (name === "collapsed") await command("Page.navigate", {url:`file://${dir}/collapsed.html`});
+      const fixtureDeadline = Date.now() + 30000;
+      let result;
+      while (!result && Date.now() < fixtureDeadline) {
+        result = (await evaluate(`document.body?.dataset.fixture === '${name}' ? document.body.dataset.result : undefined`)).result?.result?.value;
+        await pause();
+      }
+      assert.equal(result, "PASS", `${name}: ${result || "missing browser result"}`);
     }
-    assert.equal(result, "PASS", result || "missing browser result");
-    console.log("OK: visible skeleton/header/cards, transparent scrollbar with unchanged gutter, manual scrolling, parser-time startup, and native 3x pagination");
+    console.log("OK: visible skeleton/header/cards, unchanged gutter, manual scrolling, delayed 3x pagination, and already-intersecting collapsed loader reaches 36");
   } finally {
     socket?.close();
     const exited = new Promise(resolve => browser.once("exit", resolve));

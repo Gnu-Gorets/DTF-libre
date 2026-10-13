@@ -78,7 +78,10 @@ async function createFeed({
     ["position", { value: "absolute", priority: "" }],
   ]);
   const loaderWrapper = {
-    getBoundingClientRect: () => ({ top: 2000, bottom: 2001 }),
+    getBoundingClientRect() {
+      const offset = Number.parseFloat(wrapperProperties.get("translate")?.value.split(" ")[1]) || 0;
+      return { top: 2000 + offset, bottom: 2001 + offset };
+    },
     style: {
       getPropertyValue: (name) => wrapperProperties.get(name)?.value || "",
       getPropertyPriority: (name) => wrapperProperties.get(name)?.priority || "",
@@ -132,9 +135,18 @@ async function createFeed({
       },
     },
     MutationObserver: MockMutationObserver,
+    IntersectionObserver: class {
+      constructor(callback) { this.callback = callback; }
+      observe(target) {
+        assert.ok(target.getBoundingClientRect().bottom < -2000, "loader exits before re-entry");
+        this.callback([{ isIntersecting: false }]);
+      }
+      disconnect() {}
+    },
     clearTimeout: () => {},
     get: (key, fallback) => settings[key] ?? fallback,
     setTimeout: (callback, delay) => {
+      if (delay === 500) return 2; // Exit confirmation cancels watchdog before fake clock advances.
       now += delay;
       if (!lateInitialAdded && lateInitialCount && now >= lateInitialAt) {
         for (let i = 0; i < lateInitialCount; i++) cards.push(makeCard());

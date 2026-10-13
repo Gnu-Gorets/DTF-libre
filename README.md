@@ -14,7 +14,7 @@ When **Дополнительно загружать посты** is enabled on 
 
 Firefox users who see scrollbar briefly before userscript starts can enable **Alternative page mode** in Violentmonkey advanced settings. This preserves page-context hooks and allows earlier styling. Manager startup remains outside userscript control; `document-start` alone does not guarantee execution before page scripts. See [Violentmonkey injection timing](https://violentmonkey.github.io/api/metadata-block/#run-at). Do not switch injection context to `content`: this script needs page JavaScript access.
 
-Extra loading starts after first userscript layout pass without waiting for DOMContentLoaded; initial card-count stabilization starts as soon as cards arrive. After native pagination trigger, script waits up to 15 seconds for new cards even if native loader stays hidden; hidden indicator does not prove that no request is in flight. Network speed and sequential cursor pagination remain controlled by DTF.
+Extra loading starts after first userscript layout pass without waiting for DOMContentLoaded; initial card-count stabilization starts as soon as cards arrive. Before each native pagination trigger, script moves loader wrapper above observer area, waits up to 500 ms for confirmed exit, then moves it into viewport. This retriggers pagination even when collapsed cards leave loader already intersecting. Temporary styles are restored; if exit cannot be confirmed, existing late-response wait remains active. After native pagination trigger, script waits up to 15 seconds for new cards even if native loader stays hidden; hidden indicator does not prove that no request is in flight. Network speed and sequential cursor pagination remain controlled by DTF.
 
 ## Image loading
 
