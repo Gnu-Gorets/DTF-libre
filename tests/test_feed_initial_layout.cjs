@@ -5,11 +5,13 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const source = fs.readFileSync("dtf.user.js", "utf8");
-const start = source.indexOf("  let feedInitialRevealTimer = null;");
+const start = source.indexOf("  let feedInitialPostCount = null;");
 const end = source.indexOf("  const postIdForCard =", start);
 const css = source.match(/  style.textContent = `([\s\S]*?)`;/)[1];
+assert(!source.includes("dtf-vm-feed-pending"), "does not block initial feed display");
+assert(!source.includes('content: "Загрузка…"'), "does not add loading text");
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-feed-layout-"));
-const fixture = `<!doctype html><html class="dtf-vm-feed-pending"><head>
+const fixture = `<!doctype html><html><head>
 <style>${css}</style><style>body{margin:0}.content{height:200px}</style>
 </head><body><main class="feed-page"><div class="content-list"><div id="posts"></div><div id="trigger"><div class="content-list__loader" style="display:none"></div></div></div></main>
 <script>
@@ -26,10 +28,8 @@ const addPosts = count => {
 addPosts(24);
 const heights = [];
 const checkGeometry = () => {
-  if (document.documentElement.classList.contains('dtf-vm-feed-pending')) {
-    heights.push(document.documentElement.scrollHeight);
-    if (getComputedStyle(posts).visibility !== 'hidden') throw Error('partial posts visible');
-  }
+  heights.push(document.documentElement.scrollHeight);
+  if (getComputedStyle(posts).visibility !== 'visible') throw Error('posts hidden while loading');
 };
 checkGeometry();
 const loader = document.querySelector('.content-list__loader');
@@ -47,10 +47,8 @@ observer.observe(document.querySelector('#trigger'));
 ${source.slice(start, end)}
 loadExtraFeedPosts().then(() => {
   if (requests !== 2 || feedPosts().length !== 48) throw Error('native pagination failed: ' + requests);
-  if (new Set(heights).size !== 1) throw Error('initial scroll height changed: ' + heights);
-  if (document.documentElement.classList.contains('dtf-vm-feed-pending')) throw Error('batch not revealed');
+  if (heights.length !== 3 || heights.some((height, index) => index && height <= heights[index - 1])) throw Error('new cards not in document flow');
   if (getComputedStyle(posts).visibility !== 'visible') throw Error('completed posts invisible');
-  if (document.documentElement.scrollHeight <= heights[0]) throw Error('completed feed still clipped');
   if (scrollY !== 0) throw Error('viewport moved');
   document.body.dataset.result = 'PASS';
 }).catch(error => { document.body.dataset.result = 'FAIL: ' + error.message; });
@@ -90,7 +88,7 @@ fs.writeFileSync(path.join(dir, "test.html"), fixture);
       await pause();
     }
     assert.equal(result, "PASS", result || "missing browser result");
-    console.log("OK: fixed initial scroll height, native IntersectionObserver pagination, atomic reveal");
+    console.log("OK: immediately visible feed, native IntersectionObserver pagination, no forced scroll");
   } finally {
     socket?.close();
     const exited = new Promise(resolve => browser.once("exit", resolve));

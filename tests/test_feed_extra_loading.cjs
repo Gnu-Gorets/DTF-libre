@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = fs.readFileSync("dtf.user.js", "utf8");
-const start = source.indexOf("  let feedInitialRevealTimer = null;");
+const start = source.indexOf("  let feedInitialPostCount = null;");
 const end = source.indexOf("  const postIdForCard =", start);
 assert(start > 0 && end > start);
 assert.match(
@@ -97,16 +97,8 @@ async function createFeed({
     },
     querySelector: () => loader,
   };
-  const rootClasses = new Set(enabled ? ["dtf-vm-feed-pending"] : []);
-  const batchSnapshots = [];
   const document = {
-    documentElement: {
-      scrollHeight: 10000,
-      classList: {
-        remove: (name) => rootClasses.delete(name),
-        contains: (name) => rootClasses.has(name),
-      },
-    },
+    documentElement: { scrollHeight: 10000 },
     scrollingElement: {
       get scrollTop() {
         return scrollTop;
@@ -134,7 +126,6 @@ async function createFeed({
       },
     },
     MutationObserver: MockMutationObserver,
-    requestAnimationFrame: (callback) => callback(),
     clearTimeout: () => {},
     get: (key, fallback) => settings[key] ?? fallback,
     setTimeout: (callback, delay) => {
@@ -177,10 +168,6 @@ async function createFeed({
           }
         }
       }
-      batchSnapshots.push({
-        count: cards.length,
-        pending: rootClasses.has("dtf-vm-feed-pending"),
-      });
       callback();
       return 1;
     },
@@ -203,8 +190,7 @@ async function createFeed({
     loaderTranslate: () => loaderWrapper.style.getPropertyValue("translate"),
     loaderTakenOutOfFlow: () => loaderTakenOutOfFlow,
     feedLoading: () => feedClasses.has("dtf-vm-feed-loading"),
-    pending: () => rootClasses.has("dtf-vm-feed-pending"),
-    batchSnapshots,
+    elapsed: () => now,
     reachEnd() {
       scrollTop = document.documentElement.scrollHeight - 500;
       scrollListeners.scroll?.();
@@ -239,9 +225,7 @@ async function createFeed({
   assert.equal(feed.loaderTranslate(), "", "restores temporary loader translation");
   assert.equal(feed.loaderTakenOutOfFlow(), false, "never removes loader from flow");
   assert.equal(feed.feedLoading(), false, "removes temporary feed loading class");
-  assert.ok(feed.batchSnapshots.every((snapshot) => snapshot.pending),
-    "keeps initial batch hidden while native pages arrive");
-  assert.equal(feed.pending(), false, "reveals completed initial batch");
+  assert.equal(feed.elapsed(), 950, "detects each response within 50 ms instead of 100 ms");
 
   feed.settings.feedPostMultiplier = 3;
   feed.context.sync();
@@ -321,6 +305,8 @@ async function createFeed({
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(lateFeed.cards.length, 72, "loads after initial cards arrive");
   assert.equal(lateFeed.pagesLoaded(), 4);
+  assert.equal(lateFeed.elapsed(), 1950,
+    "starts baseline stabilization immediately when initial cards arrive");
 
   const increasedWhileLoading = await createFeed({
     enabled: true,
@@ -358,8 +344,6 @@ async function createFeed({
     "loads two pages when reaching the end",
   );
   assert.equal(bottomFeed.pagesLoaded(), 4);
-  assert.equal(bottomFeed.batchSnapshots.at(-1).pending, false,
-    "bottom pagination does not block the visible feed");
   assert.equal(
     bottomFeed.cards.filter((card) =>
       card.classList.contains("dtf-vm-feed-post-hidden"),
@@ -377,7 +361,6 @@ async function createFeed({
   disabledFeed.reachEnd();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(disabledFeed.pagesLoaded(), 0, "disabled setting stays native");
-  assert.equal(disabledFeed.pending(), false, "disabled setting never blocks initial feed");
 
   const stableFeed = await createFeed({
     enabled: true,
@@ -399,7 +382,17 @@ async function createFeed({
   });
   await failedFeed.context.run();
   assert.equal(failedFeed.scrollTop(), 0, "restores scroll when request fails");
-  assert.equal(failedFeed.pending(), false, "reveals available posts after failure");
+
+  const stalledTrigger = await createFeed({
+    enabled: true,
+    multiplier: 2,
+    triggerDelay: Infinity,
+  });
+  await stalledTrigger.context.run();
+  assert.equal(stalledTrigger.elapsed(), 3250,
+    "does not wait another 15 seconds when native pagination never started");
+  assert.equal(stalledTrigger.feedLoading(), false);
+  assert.equal(stalledTrigger.loaderTranslate(), "");
   assert.equal(failedFeed.pagesLoaded(), 0, "stops after failed pagination");
   console.log("OK: live multiplier, native loading, and late-feed stability");
 })().catch((error) => {

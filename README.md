@@ -8,7 +8,7 @@ Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open
 
 ## Initial feed loading
 
-When **Дополнительно загружать посты** is enabled, initial feed shows **Загрузка…** at fixed height until selected batch finishes loading, then reveals available posts together. This delays first display rather than accelerating network requests. Failed requests reveal available posts; 20-second fallback prevents indefinite blocking. Later infinite scrolling remains incremental.
+When **Дополнительно загружать посты** is enabled, existing posts remain visible while native DTF pagination loads selected batch. No additional loading text or display gate is added. Initial card-count stabilization starts as soon as cards arrive; pagination stops after trigger timeout instead of waiting for response to request that never started. Network speed and sequential cursor pagination remain controlled by DTF.
 
 ## Image loading
 

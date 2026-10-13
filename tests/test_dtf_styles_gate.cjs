@@ -13,11 +13,7 @@ let timerCleared = false;
 let observerCallback;
 let observerDisconnected = false;
 let link = null;
-let extraPosts = false;
-let feedTimer;
 const context = {
-  get: () => extraPosts,
-  revealInitialFeed: () => classes.delete("dtf-vm-feed-pending"),
   document: {
     readyState: "loading",
     documentElement: {
@@ -47,10 +43,6 @@ const context = {
     },
   },
   setTimeout: (callback, ms) => {
-    if (ms === 20000) {
-      feedTimer = callback;
-      return 2;
-    }
     assert.equal(ms, 5000);
     timer = callback;
     return 1;
@@ -94,11 +86,4 @@ assert(
   !classes.has("dtf-vm-waiting-css"),
   "fallback reveals content after timeout",
 );
-extraPosts = true;
-context.startGate();
-assert(classes.has("dtf-vm-feed-pending"), "holds feed before initial rendering");
-timer();
-assert(classes.has("dtf-vm-feed-pending"), "stylesheet fallback does not reveal partial batch");
-feedTimer();
-assert(!classes.has("dtf-vm-feed-pending"), "feed timeout unblocks stalled initial loading");
-console.log("OK: stylesheet and initial feed gates, with timeout fallbacks");
+console.log("OK: hide until DTF stylesheet loads, with timeout fallback");
