@@ -29,17 +29,15 @@ const makePage = (pathname, navigationType) => {
 
 const reloadedFeed = makePage("/", "reload");
 assert.equal(reloadedFeed.page.history.scrollRestoration, "manual");
-assert.equal(reloadedFeed.listeners.pageshow.options.once, true);
-reloadedFeed.listeners.pageshow.callback();
-assert.deepEqual(reloadedFeed.scrollCalls, [[0, 0]]);
-assert.equal(reloadedFeed.page.history.scrollRestoration, "manual");
+assert.equal(reloadedFeed.listeners.pageshow, undefined);
+assert.deepEqual(reloadedFeed.scrollCalls, []);
 assert.equal(reloadedFeed.listeners.pagehide.options.once, true);
 reloadedFeed.listeners.pagehide.callback();
 assert.equal(reloadedFeed.page.history.scrollRestoration, "auto");
 
 const reloadedNewFeed = makePage("/new/", "reload");
 assert.equal(reloadedNewFeed.page.history.scrollRestoration, "manual");
-assert.equal(reloadedNewFeed.listeners.pageshow.options.once, true);
+assert.equal(reloadedNewFeed.listeners.pageshow, undefined);
 
 const navigatedFeed = makePage("/", "navigate");
 assert.equal(navigatedFeed.page.history.scrollRestoration, "auto");
@@ -48,19 +46,18 @@ assert.deepEqual(navigatedFeed.scrollCalls, []);
 
 const reloadedMyFeed = makePage("/my", "reload");
 assert.equal(reloadedMyFeed.page.history.scrollRestoration, "manual");
-assert.equal(reloadedMyFeed.listeners.pageshow.options.once, true);
+assert.equal(reloadedMyFeed.listeners.pageshow, undefined);
 
 const reloadedPost = makePage("/post/123", "reload");
 assert.equal(reloadedPost.page.history.scrollRestoration, "manual");
-assert.equal(reloadedPost.listeners.pageshow.options.once, true);
-reloadedPost.listeners.pageshow.callback();
-assert.deepEqual(reloadedPost.scrollCalls, [[0, 0]]);
+assert.equal(reloadedPost.listeners.pageshow, undefined);
+assert.deepEqual(reloadedPost.scrollCalls, []);
 
 const reloadedProfile = makePage("/user/123", "reload");
 assert.equal(reloadedProfile.page.history.scrollRestoration, "manual");
-assert.equal(reloadedProfile.listeners.pageshow.options.once, true);
+assert.equal(reloadedProfile.listeners.pageshow, undefined);
 
 const backNavigation = makePage("/", "back_forward");
 assert.equal(backNavigation.page.history.scrollRestoration, "auto");
 assert.equal(backNavigation.listeners.pageshow, undefined);
-console.log("OK: every DTF reload resets scroll; ordinary/back navigation is untouched");
+console.log("OK: reload disables late scroll restoration without forced scroll; other navigation is untouched");

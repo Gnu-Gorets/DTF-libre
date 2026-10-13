@@ -101,9 +101,6 @@
       return;
     const previousRestoration = page.history.scrollRestoration;
     page.history.scrollRestoration = "manual";
-    page.addEventListener("pageshow", () => page.scrollTo(0, 0), {
-      once: true,
-    });
     page.addEventListener(
       "pagehide",
       () => (page.history.scrollRestoration = previousRestoration),
@@ -672,31 +669,20 @@
   };
   const placeLoaderInViewport = (loader) => {
     const target = loader?.parentElement;
-    if (!target?.style?.setProperty) return () => {};
-    const properties = [
-      "position",
-      "left",
-      "bottom",
-      "top",
-      "right",
-      "width",
-      "height",
-    ];
+    if (!target?.style?.setProperty || !target.getBoundingClientRect)
+      return () => {};
+    const rect = target.getBoundingClientRect();
+    const offset = Math.round(
+      window.innerHeight / 2 - (rect.top + rect.bottom) / 2,
+    );
+    const properties = ["translate", "transition"];
     const previous = properties.map((property) => [
       property,
       target.style.getPropertyValue(property),
       target.style.getPropertyPriority(property),
     ]);
-    for (const [property, value] of [
-      ["position", "fixed"],
-      ["left", "0"],
-      ["bottom", "0"],
-      ["top", "auto"],
-      ["right", "auto"],
-      ["width", "1px"],
-      ["height", "1px"],
-    ])
-      target.style.setProperty(property, value, "important");
+    target.style.setProperty("transition", "none", "important");
+    target.style.setProperty("translate", `0 ${offset}px`, "important");
     return () =>
       previous.forEach(([property, value, priority]) =>
         value

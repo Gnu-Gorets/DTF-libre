@@ -67,12 +67,14 @@ async function createFeed({
   let loaderHiddenAt = 0;
   let scrolledWhileLoaderVisible = false;
   let lateInitialAdded = false;
-  let wasLoaderFixed = false;
+  let wasLoaderTranslated = false;
+  let loaderTakenOutOfFlow = false;
   const scrollListeners = {};
   const wrapperProperties = new Map([
     ["position", { value: "absolute", priority: "" }],
   ]);
   const loaderWrapper = {
+    getBoundingClientRect: () => ({ top: 2000, bottom: 2001 }),
     style: {
       getPropertyValue: (name) => wrapperProperties.get(name)?.value || "",
       getPropertyPriority: (name) => wrapperProperties.get(name)?.priority || "",
@@ -134,15 +136,17 @@ async function createFeed({
       }
       if (responseDone && now >= loaderHiddenAt)
         loader.style.display = "none";
-      const loaderFixed =
+      const loaderTranslated =
+        loaderWrapper.style.getPropertyValue("translate") !== "";
+      loaderTakenOutOfFlow ||=
         loaderWrapper.style.getPropertyValue("position") === "fixed";
-      if (loaderFixed && !wasLoaderFixed && responseDone) {
+      if (loaderTranslated && !wasLoaderTranslated && responseDone) {
         triggerWaits = 0;
         requestStarted = false;
         responseDone = false;
       }
-      wasLoaderFixed = loaderFixed;
-      if (loaderFixed && !requestStarted) {
+      wasLoaderTranslated = loaderTranslated;
+      if (loaderTranslated && !requestStarted) {
         triggerWaits += delay;
         if (triggerWaits >= triggerDelay) {
           loader.style.display = "block";
@@ -183,6 +187,8 @@ async function createFeed({
     scrolledWhileLoaderVisible: () => scrolledWhileLoaderVisible,
     scrollWrites: () => scrollWrites,
     loaderPosition: () => loaderWrapper.style.getPropertyValue("position"),
+    loaderTranslate: () => loaderWrapper.style.getPropertyValue("translate"),
+    loaderTakenOutOfFlow: () => loaderTakenOutOfFlow,
     feedLoading: () => feedClasses.has("dtf-vm-feed-loading"),
     reachEnd() {
       scrollTop = document.documentElement.scrollHeight - 500;
@@ -214,7 +220,9 @@ async function createFeed({
   );
   assert.equal(feed.scrollTop(), 0, "keeps initial top position");
   assert.equal(feed.scrollWrites(), 0, "never scrolls page to trigger native loader");
-  assert.equal(feed.loaderPosition(), "absolute", "restores loader wrapper style");
+  assert.equal(feed.loaderPosition(), "absolute", "keeps loader in document flow");
+  assert.equal(feed.loaderTranslate(), "", "restores temporary loader translation");
+  assert.equal(feed.loaderTakenOutOfFlow(), false, "never removes loader from flow");
   assert.equal(feed.feedLoading(), false, "removes temporary feed loading class");
 
   feed.settings.feedPostMultiplier = 3;
