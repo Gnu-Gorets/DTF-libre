@@ -11,6 +11,11 @@ assert.match(
   /page\.addEventListener\(\s*"DOMContentLoaded",\s*\(\)\s*=>\s*void loadExtraFeedPosts\(\),/,
   "ignore the DOMContentLoaded event instead of using it as the target",
 );
+assert.match(
+  source,
+  /\.feed-page\.dtf-vm-feed-loading \.content-list__loader/,
+  "keep the native loader observable while visually hiding it",
+);
 
 async function createFeed({
   enabled,
@@ -20,7 +25,6 @@ async function createFeed({
   loaderHideDelay = 300,
   succeeds = true,
   initialScrollTop = 0,
-  resetScrollOnReload = false,
 }) {
   const cards = [];
   const mutationObservers = [];
@@ -52,16 +56,39 @@ async function createFeed({
   for (let i = 0; i < initialCount; i++) cards.push(makeCard());
   let pagesLoaded = 0;
   let scrollTop = initialScrollTop;
+  let scrollWrites = 0;
   let now = 0;
   let triggerWaits = 0;
   let requestStarted = false;
   let responseDone = false;
   let loaderHiddenAt = 0;
   let scrolledWhileLoaderVisible = false;
+  let wasLoaderFixed = false;
   const scrollListeners = {};
-  const loader = { style: { display: "none" } };
+  const wrapperProperties = new Map([
+    ["position", { value: "absolute", priority: "" }],
+  ]);
+  const loaderWrapper = {
+    style: {
+      getPropertyValue: (name) => wrapperProperties.get(name)?.value || "",
+      getPropertyPriority: (name) => wrapperProperties.get(name)?.priority || "",
+      setProperty(name, value, priority = "") {
+        wrapperProperties.set(name, { value, priority });
+      },
+      removeProperty(name) {
+        wrapperProperties.delete(name);
+      },
+    },
+  };
+  const loader = { style: { display: "none" }, parentElement: loaderWrapper };
+  const feedClasses = new Set();
   const feed = {
     isConnected: true,
+    classList: {
+      add: (name) => feedClasses.add(name),
+      remove: (name) => feedClasses.delete(name),
+      contains: (name) => feedClasses.has(name),
+    },
     querySelector: () => loader,
   };
   const document = {
@@ -71,14 +98,10 @@ async function createFeed({
         return scrollTop;
       },
       set scrollTop(value) {
+        scrollWrites++;
         scrollTop = value;
-        if (value >= document.documentElement.scrollHeight) {
+        if (value >= document.documentElement.scrollHeight)
           scrolledWhileLoaderVisible ||= loader.style.display !== "none";
-          triggerWaits = 0;
-          requestStarted = false;
-          responseDone = false;
-          loader.style.display = "none";
-        }
       },
     },
     body: {},
@@ -89,7 +112,7 @@ async function createFeed({
   const context = {
     document,
     settings,
-    resetFeedLoadScroll: resetScrollOnReload,
+    wakeRestore: null,
     window: {
       innerHeight: 1000,
       addEventListener: (name, callback) => {
@@ -103,7 +126,15 @@ async function createFeed({
       now += delay;
       if (responseDone && now >= loaderHiddenAt)
         loader.style.display = "none";
-      if (scrollTop > 0 && !requestStarted) {
+      const loaderFixed =
+        loaderWrapper.style.getPropertyValue("position") === "fixed";
+      if (loaderFixed && !wasLoaderFixed && responseDone) {
+        triggerWaits = 0;
+        requestStarted = false;
+        responseDone = false;
+      }
+      wasLoaderFixed = loaderFixed;
+      if (loaderFixed && !requestStarted) {
         triggerWaits += delay;
         if (triggerWaits >= triggerDelay) {
           loader.style.display = "block";
@@ -138,6 +169,9 @@ async function createFeed({
     scrollTop: () => scrollTop,
     triggerWaits: () => triggerWaits,
     scrolledWhileLoaderVisible: () => scrolledWhileLoaderVisible,
+    scrollWrites: () => scrollWrites,
+    loaderPosition: () => loaderWrapper.style.getPropertyValue("position"),
+    feedLoading: () => feedClasses.has("dtf-vm-feed-loading"),
     reachEnd() {
       scrollTop = document.documentElement.scrollHeight - 500;
       scrollListeners.scroll?.();
@@ -166,7 +200,10 @@ async function createFeed({
     false,
     "waits for previous loader to hide before retriggering",
   );
-  assert.equal(feed.scrollTop(), 0, "restores page scroll");
+  assert.equal(feed.scrollTop(), 0, "keeps initial top position");
+  assert.equal(feed.scrollWrites(), 0, "never scrolls page to trigger native loader");
+  assert.equal(feed.loaderPosition(), "absolute", "restores loader wrapper style");
+  assert.equal(feed.feedLoading(), false, "removes temporary feed loading class");
 
   feed.settings.feedPostMultiplier = 3;
   feed.context.sync();
@@ -247,18 +284,18 @@ async function createFeed({
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(disabledFeed.pagesLoaded(), 0, "disabled setting stays native");
 
-  const reloadedFeed = await createFeed({
+  const stableFeed = await createFeed({
     enabled: true,
     multiplier: 2,
     initialScrollTop: 1800,
-    resetScrollOnReload: true,
   });
-  await reloadedFeed.context.run();
+  await stableFeed.context.run();
   assert.equal(
-    reloadedFeed.scrollTop(),
-    0,
-    "initial extra load must not restore stale pre-reload scroll",
+    stableFeed.scrollTop(),
+    1800,
+    "extra loading preserves the user's current scroll",
   );
+  assert.equal(stableFeed.scrollWrites(), 0, "loading never moves the viewport");
 
   const failedFeed = await createFeed({
     enabled: true,
@@ -268,7 +305,7 @@ async function createFeed({
   await failedFeed.context.run();
   assert.equal(failedFeed.scrollTop(), 0, "restores scroll when request fails");
   assert.equal(failedFeed.pagesLoaded(), 0, "stops after failed pagination");
-  console.log("OK: delayed feed trigger, multiplier, doubled bottom load, and timeout restoration");
+  console.log("OK: multiplier, doubled native loading, and stable page scroll");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

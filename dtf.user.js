@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.103
+// @version      0.0.96
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -96,11 +96,9 @@
   const syncHashtagCards = () =>
     document.querySelectorAll(".content").forEach(syncHashtagCard);
   const page = unsafeWindow;
-  let resetFeedLoadScroll = false;
   const resetScrollOnReload = () => {
     if (page.performance.getEntriesByType("navigation")[0]?.type !== "reload")
       return;
-    resetFeedLoadScroll = Boolean(get("feedExtraPosts", false));
     const previousRestoration = page.history.scrollRestoration;
     page.history.scrollRestoration = "manual";
     page.addEventListener("pageshow", () => page.scrollTo(0, 0), {
@@ -584,6 +582,7 @@
     }
     const list = loader?.closest(".content-list");
     if (
+      feedLoading ||
       !list?.querySelector(".dtf-vm-minimized-post") ||
       loader.style.display !== "none" ||
       wakeRestore
@@ -652,6 +651,40 @@
       post.classList.toggle("dtf-vm-feed-post-hidden", index >= target),
     );
   };
+  const placeLoaderInViewport = (loader) => {
+    const target = loader?.parentElement;
+    if (!target?.style?.setProperty) return () => {};
+    const properties = [
+      "position",
+      "left",
+      "bottom",
+      "top",
+      "right",
+      "width",
+      "height",
+    ];
+    const previous = properties.map((property) => [
+      property,
+      target.style.getPropertyValue(property),
+      target.style.getPropertyPriority(property),
+    ]);
+    for (const [property, value] of [
+      ["position", "fixed"],
+      ["left", "0"],
+      ["bottom", "0"],
+      ["top", "auto"],
+      ["right", "auto"],
+      ["width", "1px"],
+      ["height", "1px"],
+    ])
+      target.style.setProperty(property, value, "important");
+    return () =>
+      previous.forEach(([property, value, priority]) =>
+        value
+          ? target.style.setProperty(property, value, priority)
+          : target.style.removeProperty(property),
+      );
+  };
   const loadExtraFeedPosts = async (target = null, syncVisibility = true) => {
     const feed = document.querySelector(".feed-page");
     if (!feed) {
@@ -671,6 +704,8 @@
     if (syncVisibility) syncFeedPostVisibility();
     if (!get("feedExtraPosts", false) || feedLoading) return;
     feedLoading = true;
+    wakeRestore?.();
+    feed.classList.add("dtf-vm-feed-loading");
     try {
       let count = feedPosts().length;
       while (
@@ -679,7 +714,6 @@
         feed.isConnected
       ) {
         const previousCount = count;
-        const scroller = document.scrollingElement;
         const loader = feed.querySelector(".content-list__loader");
         const loaderDeadline = Date.now() + 3000;
         while (
@@ -690,20 +724,21 @@
         )
           await new Promise((resolve) => setTimeout(resolve, 50));
         if (loader && loader.style.display !== "none") break;
-        const previousScroll = resetFeedLoadScroll ? 0 : scroller.scrollTop;
-        resetFeedLoadScroll = false;
-        scroller.scrollTop = document.documentElement.scrollHeight;
+        const restoreLoader = placeLoaderInViewport(loader);
         const triggerDeadline = Date.now() + 3000;
-        while (
-          count <= previousCount &&
-          (!loader || loader.style.display === "none") &&
-          Date.now() < triggerDeadline &&
-          feed.isConnected
-        ) {
-          await new Promise((resolve) => setTimeout(resolve, 50));
-          count = feedPosts().length;
+        try {
+          while (
+            count <= previousCount &&
+            (!loader || loader.style.display === "none") &&
+            Date.now() < triggerDeadline &&
+            feed.isConnected
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            count = feedPosts().length;
+          }
+        } finally {
+          restoreLoader();
         }
-        scroller.scrollTop = previousScroll;
         const deadline = Date.now() + 15000;
         while (
           count <= previousCount &&
@@ -718,8 +753,8 @@
         if (syncVisibility) syncFeedPostVisibility();
       }
     } finally {
+      feed.classList.remove("dtf-vm-feed-loading");
       feedLoading = false;
-      resetFeedLoadScroll = false;
     }
   };
   window.addEventListener(
@@ -956,7 +991,7 @@
     @media (max-width: 924px) { .layout:has(.view) { --layout-max-width: 100vw !important; } }
     html.dtf-vm-stretch-right .layout:has(.view) { --layout-right-aside-width: 0px !important; }
     html.dtf-vm-stretch-right .layout:has(.entry) { --layout-max-content-width: var(--dtf-feed-width) !important; --layout-max-width: var(--dtf-layout-width) !important; --layout-right-aside-width: 0px !important; }
-    .feed-page:has(.dtf-vm-minimized-post) .content-list__loader { display: block !important; box-sizing: border-box !important; width: 1px !important; height: 1px !important; min-height: 1px !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+    .feed-page:has(.dtf-vm-minimized-post) .content-list__loader, .feed-page.dtf-vm-feed-loading .content-list__loader { display: block !important; box-sizing: border-box !important; width: 1px !important; height: 1px !important; min-height: 1px !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
     .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; flex-direction: column !important; align-items: center !important; }
     .dtf-vm-centered .block-wrapper--media .andropov-media { margin-inline: auto !important; }
     .dtf-vm-centered .block-wrapper--gallery .mvqlyolt { justify-content: center; }
