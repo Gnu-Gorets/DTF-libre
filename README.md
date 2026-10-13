@@ -6,6 +6,10 @@ Userscript for DTF feed layout and image loading.
 
 Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open `https://dtf.ru/`, then select `Настройки` in userscript manager menu of this JS script. Replace existing installation rather than running multiple copies. Personalization settings include six theme colors, optional HTTPS background image URL, and theme-code import/export; Violentmonkey stores settings separately from script updates.
 
+## Initial feed loading
+
+When **Дополнительно загружать посты** is enabled, initial feed shows **Загрузка…** at fixed height until selected batch finishes loading, then reveals available posts together. This delays first display rather than accelerating network requests. Failed requests reveal available posts; 20-second fallback prevents indefinite blocking. Later infinite scrolling remains incremental.
+
 ## Image loading
 
 - Post media and gallery images load eagerly, including when new posts are added while scrolling. Avatar and other small images keep native lazy loading. Chromium handles image requests in parallel; no custom sequential download queue exists.

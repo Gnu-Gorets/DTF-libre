@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.96
+// @version      0.0.97
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -610,6 +610,12 @@
       wakeRestore = null;
     };
   };
+  let feedInitialRevealTimer = null;
+  const revealInitialFeed = () => {
+    clearTimeout(feedInitialRevealTimer);
+    feedInitialRevealTimer = null;
+    document.documentElement?.classList.remove("dtf-vm-feed-pending");
+  };
   let feedInitialPostCount = null;
   let feedInitialObserver = null;
   let feedInitialTimer = null;
@@ -691,6 +697,11 @@
       );
   };
   const loadExtraFeedPosts = async (target = null, syncVisibility = true) => {
+    if (!get("feedExtraPosts", false)) {
+      if (syncVisibility) syncFeedPostVisibility();
+      revealInitialFeed();
+      return;
+    }
     const feed = document.querySelector(".feed-page");
     if (!feed) {
       if (get("feedExtraPosts", false)) waitForInitialFeedPosts();
@@ -705,7 +716,7 @@
       }
     }
     if (syncVisibility) syncFeedPostVisibility();
-    if (!get("feedExtraPosts", false) || feedLoading) return;
+    if (feedLoading) return;
     const explicitTarget = target !== null;
     feedVisibilityNeedsSync = false;
     feedLoading = true;
@@ -768,6 +779,11 @@
       }
     } finally {
       if (loaderClassAdded) feed.classList.remove("dtf-vm-feed-loading");
+      if (document.documentElement?.classList.contains("dtf-vm-feed-pending")) {
+        // Let queued card filters and gallery layout settle before revealing the batch.
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        revealInitialFeed();
+      }
       feedLoading = false;
     }
   };
@@ -1105,6 +1121,9 @@
     html.dtf-vm-hide-footer :has(> [data-section="footer"]) { display: none !important; }
     html.dtf-vm-hide-donations-menu [href*="/donat"], html.dtf-vm-hide-plus-menu [href*="/plus"] { display: none !important; }
     html.dtf-vm-waiting-css body { visibility: hidden !important; }
+    html.dtf-vm-feed-pending .feed-page { position: relative !important; height: 100vh !important; min-height: 0 !important; overflow: hidden !important; overflow-anchor: none; }
+    html.dtf-vm-feed-pending .feed-page > * { visibility: hidden !important; }
+    html.dtf-vm-feed-pending .feed-page::after { content: "Загрузка…"; position: absolute; top: 48px; inset-inline: 0; text-align: center; color: var(--theme-color-text-primary); }
     @media (min-width: 1240px) {
       html.dtf-vm-hide-right-sidebar .layout > .aside.aside--right { display: none !important; }
       .dtf-vm-live-panel { grid-column: 3; grid-row: 1; margin-left: 8px; position: sticky; top: var(--layout-header-height); width: var(--layout-right-aside-width, 320px); height: calc(100vh - var(--layout-header-height)); padding-top: 16px; color: var(--theme-color-text-primary); }
@@ -1261,6 +1280,11 @@
       });
       observer.observe(document, { childList: true });
       return;
+    }
+    if (get("feedExtraPosts", false)) {
+      root.classList.add("dtf-vm-feed-pending");
+      // Never leave the feed blocked if hydration or native pagination stalls.
+      feedInitialRevealTimer = setTimeout(revealInitialFeed, 20000);
     }
     const className = "dtf-vm-waiting-css";
     root.classList.add(className);
