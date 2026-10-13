@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.104
+// @version      0.0.96
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -544,6 +544,8 @@
   let feedInitialPostCount = null;
   let feedInitialObserver = null;
   let feedInitialTimer = null;
+  let feedPageSize = 0;
+  let feedBottomLoadHandled = false;
   let feedLoading = false;
   const feedPosts = () => [
     ...document.querySelectorAll(".feed-page .content-list .content"),
@@ -572,14 +574,12 @@
     );
   const syncFeedPostVisibility = () => {
     if (feedInitialPostCount === null) return;
-    const target = get("feedExtraPosts", false)
-      ? feedPostTarget()
-      : Infinity;
+    const target = get("feedExtraPosts", false) ? feedPostTarget() : Infinity;
     feedPosts().forEach((post, index) =>
       post.classList.toggle("dtf-vm-feed-post-hidden", index >= target),
     );
   };
-  const loadExtraFeedPosts = async () => {
+  const loadExtraFeedPosts = async (target = null, syncVisibility = true) => {
     const feed = document.querySelector(".feed-page");
     if (!feed) {
       if (get("feedExtraPosts", false)) waitForInitialFeedPosts();
@@ -594,14 +594,15 @@
       }
       feedInitialPostCount = initialCount;
     }
-    syncFeedPostVisibility();
+    if (target === null) target = feedPostTarget();
+    if (syncVisibility) syncFeedPostVisibility();
     if (!get("feedExtraPosts", false) || feedLoading) return;
     feedLoading = true;
     try {
       let count = feedPosts().length;
       while (
         get("feedExtraPosts", false) &&
-        count < feedPostTarget() &&
+        count < target &&
         feed.isConnected
       ) {
         const previousCount = count;
@@ -639,12 +640,37 @@
           count = feedPosts().length;
         }
         if (count <= previousCount) break;
-        syncFeedPostVisibility();
+        feedPageSize = count - previousCount;
+        if (syncVisibility) syncFeedPostVisibility();
       }
     } finally {
       feedLoading = false;
     }
   };
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (feedLoading) return;
+      const scroller = document.scrollingElement;
+      const atBottom =
+        window.innerHeight + scroller.scrollTop >=
+        document.documentElement.scrollHeight - 100;
+      if (!atBottom) {
+        feedBottomLoadHandled = false;
+        return;
+      }
+      if (
+        feedBottomLoadHandled ||
+        !get("feedExtraPosts", false) ||
+        feedInitialPostCount === null
+      )
+        return;
+      feedBottomLoadHandled = true;
+      const pageSize = feedPageSize || feedInitialPostCount;
+      void loadExtraFeedPosts(feedPosts().length + pageSize * 2, false);
+    },
+    { passive: true },
+  );
   const postIdForCard = (card) => {
     for (const link of card.querySelectorAll(".content-header a[href]")) {
       if (link.closest(".content") !== card) continue;
@@ -3367,9 +3393,13 @@
     else rememberInitialVideoPosters();
     apply();
     if (document.readyState === "loading")
-      page.addEventListener("DOMContentLoaded", loadExtraFeedPosts, {
-        once: true,
-      });
+      page.addEventListener(
+        "DOMContentLoaded",
+        () => void loadExtraFeedPosts(),
+        {
+          once: true,
+        },
+      );
     else void loadExtraFeedPosts();
     window.addEventListener("resize", apply);
     let applyFrame = null;

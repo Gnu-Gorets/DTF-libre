@@ -6,6 +6,11 @@ const source = fs.readFileSync("dtf.user.js", "utf8");
 const start = source.indexOf("  let feedInitialPostCount = null;");
 const end = source.indexOf("  const postIdForCard =", start);
 assert(start > 0 && end > start);
+assert.match(
+  source,
+  /page\.addEventListener\("DOMContentLoaded",\s*\(\)\s*=>\s*void loadExtraFeedPosts\(\),/,
+  "ignore the DOMContentLoaded event instead of using it as the target",
+);
 
 async function createFeed({
   enabled,
@@ -51,6 +56,7 @@ async function createFeed({
   let responseDone = false;
   let loaderHiddenAt = 0;
   let scrolledWhileLoaderVisible = false;
+  const scrollListeners = {};
   const loader = { style: { display: "none" } };
   const feed = {
     isConnected: true,
@@ -64,7 +70,7 @@ async function createFeed({
       },
       set scrollTop(value) {
         scrollTop = value;
-        if (value > 0) {
+        if (value >= document.documentElement.scrollHeight) {
           scrolledWhileLoaderVisible ||= loader.style.display !== "none";
           triggerWaits = 0;
           requestStarted = false;
@@ -81,6 +87,12 @@ async function createFeed({
   const context = {
     document,
     settings,
+    window: {
+      innerHeight: 1000,
+      addEventListener: (name, callback) => {
+        scrollListeners[name] = callback;
+      },
+    },
     MutationObserver: MockMutationObserver,
     clearTimeout: () => {},
     get: (key, fallback) => settings[key] ?? fallback,
@@ -94,7 +106,11 @@ async function createFeed({
           loader.style.display = "block";
           requestStarted = true;
         }
-      } else if (scrollTop === 0 && requestStarted && !responseDone) {
+      } else if (
+        scrollTop < document.documentElement.scrollHeight &&
+        requestStarted &&
+        !responseDone
+      ) {
         responseDone = true;
         loaderHiddenAt = now + loaderHideDelay;
         if (succeeds) {
@@ -119,6 +135,14 @@ async function createFeed({
     scrollTop: () => scrollTop,
     triggerWaits: () => triggerWaits,
     scrolledWhileLoaderVisible: () => scrolledWhileLoaderVisible,
+    reachEnd() {
+      scrollTop = document.documentElement.scrollHeight - 500;
+      scrollListeners.scroll?.();
+    },
+    scrollAway() {
+      scrollTop = 0;
+      scrollListeners.scroll?.();
+    },
     addInitialPosts(count) {
       for (let i = 0; i < count; i++) cards.push(makeCard());
       mutationObservers
@@ -191,6 +215,35 @@ async function createFeed({
   assert.equal(lateFeed.cards.length, 72, "loads after initial cards arrive");
   assert.equal(lateFeed.pagesLoaded(), 4);
 
+  const bottomFeed = await createFeed({ enabled: true, multiplier: 2 });
+  await bottomFeed.context.run();
+  const beforeBottom = bottomFeed.cards.length;
+  bottomFeed.reachEnd();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    bottomFeed.cards.length,
+    beforeBottom + 24,
+    "loads two pages when reaching the end",
+  );
+  assert.equal(bottomFeed.pagesLoaded(), 4);
+  assert.equal(
+    bottomFeed.cards.filter((card) =>
+      card.classList.contains("dtf-vm-feed-post-hidden"),
+    ).length,
+    0,
+    "keeps posts from doubled bottom load visible",
+  );
+  bottomFeed.scrollAway();
+  bottomFeed.reachEnd();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(bottomFeed.pagesLoaded(), 6, "rearms after leaving the end");
+
+  const disabledFeed = await createFeed({ enabled: false, multiplier: 2 });
+  await disabledFeed.context.run();
+  disabledFeed.reachEnd();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(disabledFeed.pagesLoaded(), 0, "disabled setting stays native");
+
   const failedFeed = await createFeed({
     enabled: true,
     multiplier: 2,
@@ -199,7 +252,7 @@ async function createFeed({
   await failedFeed.context.run();
   assert.equal(failedFeed.scrollTop(), 0, "restores scroll when request fails");
   assert.equal(failedFeed.pagesLoaded(), 0, "stops after failed pagination");
-  console.log("OK: delayed feed trigger, live multiplier, and timeout restoration");
+  console.log("OK: delayed feed trigger, multiplier, doubled bottom load, and timeout restoration");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

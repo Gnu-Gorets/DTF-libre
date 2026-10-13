@@ -54,7 +54,7 @@ const context = {
   },
   unsafeWindow: page,
   document: { readyState: "loading" },
-  window: { innerWidth: 1920 },
+  window: { innerWidth: 1920, addEventListener() {} },
   location: { href: "https://dtf.ru/", origin: "https://dtf.ru" },
   URL,
   console,

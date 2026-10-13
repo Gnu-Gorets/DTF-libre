@@ -34,6 +34,7 @@ const loader = {
 };
 const context = {
   document: { querySelector: () => loader },
+  window: { addEventListener() {} },
   innerHeight: 1133,
   setTimeout: (callback) => {
     pending = callback;
