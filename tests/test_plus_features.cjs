@@ -18,6 +18,8 @@ const handlers = [];
 const notifications = [];
 let onLoad;
 const page = {
+  location: { pathname: "/" },
+  performance: { getEntriesByType: () => [{ type: "navigate" }] },
   localStorage: {
     getItem: (key) => storage.get(key) ?? null,
     setItem: (key, value) => storage.set(key, value),

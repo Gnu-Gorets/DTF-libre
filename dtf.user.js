@@ -96,6 +96,23 @@
   const syncHashtagCards = () =>
     document.querySelectorAll(".content").forEach(syncHashtagCard);
   const page = unsafeWindow;
+  const resetFeedScrollOnReload = () => {
+    const path = page.location.pathname.replace(/\/+$/, "") || "/";
+    if (!["/", "/new", "/popular"].includes(path)) return;
+    if (page.performance.getEntriesByType("navigation")[0]?.type !== "reload")
+      return;
+    const previousRestoration = page.history.scrollRestoration;
+    page.history.scrollRestoration = "manual";
+    page.addEventListener("pageshow", () => page.scrollTo(0, 0), {
+      once: true,
+    });
+    page.addEventListener(
+      "pagehide",
+      () => (page.history.scrollRestoration = previousRestoration),
+      { once: true },
+    );
+  };
+  resetFeedScrollOnReload();
   const setPhotoSwipeZoomLevels = ({ zoomLevels, slideData }) => {
     const width = Number(slideData.w || slideData.width);
     const height = Number(slideData.h || slideData.height);
