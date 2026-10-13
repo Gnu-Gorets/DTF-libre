@@ -55,6 +55,7 @@ const context = {
   unsafeWindow: page,
   document: { readyState: "loading" },
   window: { innerWidth: 1920, addEventListener() {} },
+  MutationObserver: class { observe() {} disconnect() {} },
   location: { href: "https://dtf.ru/", origin: "https://dtf.ru" },
   URL,
   console,

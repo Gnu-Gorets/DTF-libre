@@ -96,6 +96,62 @@
   const syncHashtagCards = () =>
     document.querySelectorAll(".content").forEach(syncHashtagCard);
   const page = unsafeWindow;
+  const setPhotoSwipeZoomLevels = ({ zoomLevels, slideData }) => {
+    const width = Number(slideData.w || slideData.width);
+    const height = Number(slideData.h || slideData.height);
+    if (!(width > 0 && height > 0)) return;
+    const zoom = Math.max(
+      1,
+      Math.min(
+        4,
+        (page.innerWidth * 0.9) / width,
+        (page.innerHeight * 0.9) / height,
+      ),
+    );
+    if (zoom <= zoomLevels.initial) return;
+    zoomLevels.initial = zoom;
+    zoomLevels.secondary = Math.max(
+      zoomLevels.secondary,
+      Math.min(4, zoom * 1.5),
+    );
+    zoomLevels.max = Math.max(zoomLevels.max, zoomLevels.secondary);
+  };
+  const photoSwipeInstances = new WeakSet();
+  let installPhotoSwipeHook;
+  const attachPhotoSwipe = (pswp) => {
+    if (!pswp || photoSwipeInstances.has(pswp)) return;
+    photoSwipeInstances.add(pswp);
+    pswp.on("zoomLevelsUpdate", setPhotoSwipeZoomLevels);
+    pswp.on("destroy", () => page.requestAnimationFrame(installPhotoSwipeHook));
+  };
+  installPhotoSwipeHook = () => {
+    const descriptor = Object.getOwnPropertyDescriptor(page, "pswp");
+    if (
+      descriptor &&
+      (!descriptor.configurable ||
+        !("value" in descriptor) ||
+        !descriptor.writable)
+    )
+      return;
+    let value = descriptor?.value;
+    Object.defineProperty(page, "pswp", {
+      configurable: true,
+      enumerable: descriptor?.enumerable ?? true,
+      get: () => value,
+      set: (pswp) => {
+        value = pswp;
+        Object.defineProperty(page, "pswp", {
+          configurable: true,
+          enumerable: descriptor?.enumerable ?? true,
+          writable: true,
+          value: pswp,
+        });
+        attachPhotoSwipe(pswp);
+      },
+    });
+    attachPhotoSwipe(value);
+  };
+  installPhotoSwipeHook();
   let plusWasEnabled = false;
   const syncPlus = (notify = false) => {
     const enabled = Boolean(get("plusFeatures", false));

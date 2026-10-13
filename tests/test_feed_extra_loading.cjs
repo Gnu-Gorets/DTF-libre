@@ -8,7 +8,7 @@ const end = source.indexOf("  const postIdForCard =", start);
 assert(start > 0 && end > start);
 assert.match(
   source,
-  /page\.addEventListener\("DOMContentLoaded",\s*\(\)\s*=>\s*void loadExtraFeedPosts\(\),/,
+  /page\.addEventListener\(\s*"DOMContentLoaded",\s*\(\)\s*=>\s*void loadExtraFeedPosts\(\),/,
   "ignore the DOMContentLoaded event instead of using it as the target",
 );
 
