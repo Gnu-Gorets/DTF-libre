@@ -4,7 +4,7 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync("dtf.user.js", "utf8");
 const start = source.indexOf("  let feedLoaderObserver = null;");
-const end = source.indexOf("  const postIdForCard =", start);
+const end = source.indexOf("  let initialFeedPending =", start);
 assert(start > 0 && end > start);
 let postCount = 12;
 let collapsed = true;
@@ -38,6 +38,7 @@ const loader = {
   closest: () => list,
 };
 const context = {
+  feedLoading: false,
   document: { querySelector: () => loader },
   window: { addEventListener() {} },
   innerHeight: 1133,

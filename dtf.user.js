@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.99
+// @version      0.0.100
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -610,6 +610,45 @@
       wakeRestore = null;
     };
   };
+  let initialFeedPending = Boolean(get("feedExtraPosts", false));
+  const initialFeedPath = location.pathname;
+  let initialFeedElement = null;
+  let prepareInitialFeed = () => {};
+  const releaseInitialFeed = () => {
+    if (!initialFeedPending) return;
+    initialFeedPending = false;
+    clearTimeout(initialFeedTimeout);
+    document.documentElement?.classList.remove("dtf-vm-feed-pending");
+  };
+  const initialFeedTimeout = initialFeedPending
+    ? setTimeout(releaseInitialFeed, 60000)
+    : null;
+  const syncInitialFeedGate = () => {
+    if (!initialFeedPending) return;
+    if (
+      !get("feedExtraPosts", false) ||
+      location.pathname !== initialFeedPath ||
+      (initialFeedElement && !initialFeedElement.isConnected)
+    ) {
+      releaseInitialFeed();
+      return;
+    }
+    initialFeedElement ||= document.querySelector(".feed-page");
+    document.documentElement?.classList.add("dtf-vm-feed-pending");
+  };
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) releaseInitialFeed();
+  });
+  const finishInitialFeed = () => {
+    if (!initialFeedPending) return;
+    requestAnimationFrame(() => {
+      try {
+        prepareInitialFeed();
+      } finally {
+        releaseInitialFeed();
+      }
+    });
+  };
   let feedInitialPostCount = null;
   let feedInitialObserver = null;
   let feedPageSize = 0;
@@ -699,8 +738,10 @@
         return;
       }
     }
+    syncInitialFeedGate();
     if (syncVisibility) syncFeedPostVisibility();
     if (!get("feedExtraPosts", false) || feedLoading) return;
+    const initialLoad = feedInitialPostCount === null;
     const explicitTarget = target !== null;
     feedVisibilityNeedsSync = false;
     feedLoading = true;
@@ -765,6 +806,7 @@
     } finally {
       if (loaderClassAdded) feed.classList.remove("dtf-vm-feed-loading");
       feedLoading = false;
+      if (initialLoad) finishInitialFeed();
     }
   };
   window.addEventListener(
@@ -1001,6 +1043,10 @@
     @media (max-width: 924px) { .layout:has(.view) { --layout-max-width: 100vw !important; } }
     html.dtf-vm-stretch-right .layout:has(.view) { --layout-right-aside-width: 0px !important; }
     html.dtf-vm-stretch-right .layout:has(.entry) { --layout-max-content-width: var(--dtf-feed-width) !important; --layout-max-width: var(--dtf-layout-width) !important; --layout-right-aside-width: 0px !important; }
+    /* Keep pending cards measurable; reserve scrollbar gutter until batch is ready. */
+    html.dtf-vm-feed-pending:has(.feed-page) { overflow-y: hidden !important; scrollbar-gutter: stable !important; }
+    html.dtf-vm-feed-pending .feed-page { position: relative !important; height: max(1px, calc(100vh - 160px)) !important; overflow: hidden !important; }
+    html.dtf-vm-feed-pending .feed-page .content-list { position: absolute !important; width: 100% !important; visibility: hidden !important; pointer-events: none !important; }
     .feed-page:has(.dtf-vm-minimized-post) .content-list__loader, .feed-page.dtf-vm-feed-loading .content-list__loader { display: block !important; box-sizing: border-box !important; width: 1px !important; height: 1px !important; min-height: 1px !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
     .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; flex-direction: column !important; align-items: center !important; }
     .dtf-vm-centered .block-wrapper--media .andropov-media { margin-inline: auto !important; }
@@ -1305,6 +1351,7 @@
   const primeLayout = () => {
     const root = document.documentElement;
     if (!root) return;
+    syncInitialFeedGate();
     applySidebarClasses(root);
     root.classList.toggle("dtf-vm-stretch-right", stretchRightActive());
     attachStyles();
@@ -2793,6 +2840,7 @@
     };
 
     const apply = () => {
+      syncInitialFeedGate();
       document.documentElement.classList.toggle(
         "dtf-vm-header-width",
         Boolean(get("headerWidth", false)),
@@ -2907,6 +2955,7 @@
       updateRightPanelControls();
       updateTopButton();
     };
+    prepareInitialFeed = apply;
 
     const openSettings = () => {
       if (document.querySelector(".dtf-vm-overlay")) return;

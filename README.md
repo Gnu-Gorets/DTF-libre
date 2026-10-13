@@ -8,7 +8,11 @@ Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open
 
 ## Initial feed loading
 
-When **Дополнительно загружать посты** is enabled, existing posts remain visible while native DTF pagination loads selected batch. No additional loading text or display gate is added. Initial card-count stabilization starts as soon as cards arrive. After native pagination trigger, script waits up to 15 seconds for new cards even if native loader stays hidden; hidden indicator does not prove that no request is in flight. Network speed and sequential cursor pagination remain controlled by DTF.
+When **Дополнительно загружать посты** is enabled on page load, initial feed stays hidden with fixed intermediate height until selected batch is ready. Scrollbar is withheld with its gutter reserved while site layout settles. Cards appear together after filters and layout are applied; no loading text or forced scroll is added. This prevents intermediate scrollbar resizing, but delays first display. Gate releases after failed pagination, at most 60 seconds, or when setting is disabled or route changes. Later infinite scrolling remains native and changes scrollbar size as posts arrive.
+
+Firefox users who see native cards briefly before userscript starts can enable **Alternative page mode** in Violentmonkey advanced settings. This preserved page-context hooks and avoided early partial display in isolated Firefox 158.0 / Violentmonkey 2.49.0 checks. Manager startup remains outside userscript control; `document-start` alone does not guarantee execution before page scripts. See [Violentmonkey injection timing](https://violentmonkey.github.io/api/metadata-block/#run-at). Do not switch injection context to `content`: this script needs page JavaScript access.
+
+Initial card-count stabilization starts as soon as cards arrive. After native pagination trigger, script waits up to 15 seconds for new cards even if native loader stays hidden; hidden indicator does not prove that no request is in flight. Network speed and sequential cursor pagination remain controlled by DTF.
 
 ## Image loading
 

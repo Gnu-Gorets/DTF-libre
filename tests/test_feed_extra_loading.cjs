@@ -60,6 +60,7 @@ async function createFeed({
   };
   for (let i = 0; i < initialCount; i++) cards.push(makeCard());
   let pagesLoaded = 0;
+  let initialFinishes = 0;
   let scrollTop = initialScrollTop;
   let scrollWrites = 0;
   let now = 0;
@@ -122,6 +123,8 @@ async function createFeed({
     document,
     settings,
     wakeRestore: null,
+    syncInitialFeedGate: () => {},
+    finishInitialFeed: () => { initialFinishes++; },
     window: {
       innerHeight: 1000,
       addEventListener: (name, callback) => {
@@ -187,6 +190,7 @@ async function createFeed({
     settings,
     context,
     pagesLoaded: () => pagesLoaded,
+    initialFinishes: () => initialFinishes,
     scrollTop: () => scrollTop,
     triggerWaits: () => triggerWaits,
     scrolledWhileLoaderVisible: () => scrolledWhileLoaderVisible,
@@ -218,6 +222,7 @@ async function createFeed({
   await feed.context.run();
   assert.equal(feed.cards.length, 48, "loads to 2x baseline");
   assert.equal(feed.pagesLoaded(), 2);
+  assert.equal(feed.initialFinishes(), 1, "reveals completed initial batch");
   assert.ok(feed.triggerWaits() >= 150, "waits for delayed loader trigger");
   assert.equal(
     feed.scrolledWhileLoaderVisible(),
@@ -249,6 +254,7 @@ async function createFeed({
   );
   await feed.context.run();
   assert.equal(feed.pagesLoaded(), 4, "does not fetch more when decreasing");
+  assert.equal(feed.initialFinishes(), 1, "later slider changes do not repeat gate");
 
   feed.settings.feedPostMultiplier = 3;
   feed.context.sync();
@@ -366,6 +372,7 @@ async function createFeed({
   disabledFeed.reachEnd();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(disabledFeed.pagesLoaded(), 0, "disabled setting stays native");
+  assert.equal(disabledFeed.initialFinishes(), 0);
 
   const stableFeed = await createFeed({
     enabled: true,
@@ -413,6 +420,8 @@ async function createFeed({
   assert.equal(stalledTrigger.feedLoading(), false);
   assert.equal(stalledTrigger.loaderTranslate(), "");
   assert.equal(failedFeed.pagesLoaded(), 0, "stops after failed pagination");
+  assert.equal(failedFeed.initialFinishes(), 1, "reveals available cards after failed pagination");
+  assert.equal(stalledTrigger.initialFinishes(), 1, "reveals after bounded request wait");
   console.log("OK: live multiplier, native loading, and late-feed stability");
 })().catch((error) => {
   console.error(error);

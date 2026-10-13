@@ -5,17 +5,16 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const source = fs.readFileSync("dtf.user.js", "utf8");
-const start = source.indexOf("  let feedInitialPostCount = null;");
+const start = source.indexOf("  let initialFeedPending =");
 const end = source.indexOf("  const postIdForCard =", start);
 const css = source.match(/  style.textContent = `([\s\S]*?)`;/)[1];
-assert(!source.includes("dtf-vm-feed-pending"), "does not block initial feed display");
+assert(start > 0, "initial gate implementation exists");
 assert(!source.includes('content: "Загрузка…"'), "does not add loading text");
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-feed-layout-"));
 const fixture = `<!doctype html><html><head>
 <style>${css}</style><style>body{margin:0}.content{height:200px}</style>
 </head><body><main class="feed-page"><div class="content-list"><div id="posts"></div><div id="trigger"><div class="content-list__loader" style="display:none"></div></div></div></main>
 <script>
-setTimeout(() => {
 const get = (key, fallback) => ({feedExtraPosts:true, feedPostMultiplier:3})[key] ?? fallback;
 let wakeRestore = null;
 const posts = document.querySelector('#posts');
@@ -29,9 +28,10 @@ addPosts(24);
 const heights = [];
 const checkGeometry = () => {
   heights.push(document.documentElement.scrollHeight);
-  if (getComputedStyle(posts).visibility !== 'visible') throw Error('posts hidden while loading');
+  if (getComputedStyle(posts).visibility !== 'hidden') throw Error('intermediate posts visible');
+  const rootStyle = getComputedStyle(document.documentElement);
+  if (rootStyle.overflowY !== 'hidden' || rootStyle.scrollbarGutter !== 'stable') throw Error('intermediate scrollbar not withheld');
 };
-checkGeometry();
 const loader = document.querySelector('.content-list__loader');
 let requests = 0;
 let busy = false;
@@ -46,9 +46,15 @@ const observer = new IntersectionObserver(([entry]) => {
 }, {rootMargin:'200% 0px'});
 observer.observe(document.querySelector('#trigger'));
 ${source.slice(start, end)}
-loadExtraFeedPosts().then(() => {
+prepareInitialFeed = () => { document.body.dataset.prepared = 'yes'; };
+syncInitialFeedGate();
+setTimeout(() => {
+checkGeometry();
+loadExtraFeedPosts().then(() => new Promise(requestAnimationFrame)).then(() => {
   if (requests !== 4 || feedPosts().length !== 72) throw Error('native pagination failed: ' + requests);
-  if (heights.length !== 5 || heights.some((height, index) => index && height <= heights[index - 1])) throw Error('new cards not in document flow');
+  if (heights.length !== 5 || heights.some(height => height !== heights[0])) throw Error('intermediate document height changed: ' + heights);
+  if (document.documentElement.scrollHeight <= heights[0]) throw Error('completed cards not in document flow');
+  if (document.body.dataset.prepared !== 'yes') throw Error('layout not prepared before reveal');
   if (getComputedStyle(posts).visibility !== 'visible') throw Error('completed posts invisible');
   if (scrollY !== 0) throw Error('viewport moved');
   document.body.dataset.result = 'PASS';
@@ -89,7 +95,7 @@ fs.writeFileSync(path.join(dir, "test.html"), fixture);
       await pause();
     }
     assert.equal(result, "PASS", result || "missing browser result");
-    console.log("OK: visible 3x feed with hidden native loader, delayed responses, and no forced scroll");
+    console.log("OK: stable intermediate geometry, atomic 3x reveal, hidden native loader, and no forced scroll");
   } finally {
     socket?.close();
     const exited = new Promise(resolve => browser.once("exit", resolve));
