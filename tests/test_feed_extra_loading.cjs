@@ -23,6 +23,8 @@ async function createFeed({
   initialCount = 24,
   triggerDelay = 150,
   loaderHideDelay = 300,
+  responseDelay = 0,
+  showLoader = true,
   succeeds = true,
   initialScrollTop = 0,
   lateInitialCount = 0,
@@ -63,6 +65,7 @@ async function createFeed({
   let now = 0;
   let triggerWaits = 0;
   let requestStarted = false;
+  let requestStartedAt = 0;
   let responseDone = false;
   let loaderHiddenAt = 0;
   let scrolledWhileLoaderVisible = false;
@@ -149,13 +152,15 @@ async function createFeed({
       if (loaderTranslated && !requestStarted) {
         triggerWaits += delay;
         if (triggerWaits >= triggerDelay) {
-          loader.style.display = "block";
+          loader.style.display = showLoader ? "block" : "none";
           requestStarted = true;
+          requestStartedAt = now;
         }
       } else if (
         scrollTop < document.documentElement.scrollHeight &&
         requestStarted &&
-        !responseDone
+        !responseDone &&
+        now - requestStartedAt >= responseDelay
       ) {
         responseDone = true;
         loaderHiddenAt = now + loaderHideDelay;
@@ -383,14 +388,28 @@ async function createFeed({
   await failedFeed.context.run();
   assert.equal(failedFeed.scrollTop(), 0, "restores scroll when request fails");
 
+  const hiddenLoaderFeed = await createFeed({
+    enabled: true,
+    multiplier: 3,
+    responseDelay: 4000,
+    showLoader: false,
+  });
+  await hiddenLoaderFeed.context.run();
+  assert.equal(hiddenLoaderFeed.cards.length, 72,
+    "reaches 3x even when loader stays hidden and responses arrive after trigger timeout");
+  assert.equal(hiddenLoaderFeed.pagesLoaded(), 4);
+  assert.equal(hiddenLoaderFeed.feedLoading(), false);
+  assert.equal(hiddenLoaderFeed.scrollWrites(), 0);
+  assert.equal(hiddenLoaderFeed.loaderTranslate(), "");
+
   const stalledTrigger = await createFeed({
     enabled: true,
     multiplier: 2,
     triggerDelay: Infinity,
   });
   await stalledTrigger.context.run();
-  assert.equal(stalledTrigger.elapsed(), 3250,
-    "does not wait another 15 seconds when native pagination never started");
+  assert.equal(stalledTrigger.elapsed(), 18250,
+    "bounds waiting even when loader state cannot confirm request start");
   assert.equal(stalledTrigger.feedLoading(), false);
   assert.equal(stalledTrigger.loaderTranslate(), "");
   assert.equal(failedFeed.pagesLoaded(), 0, "stops after failed pagination");

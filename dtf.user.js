@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.98
+// @version      0.0.99
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -745,8 +745,7 @@
         } finally {
           restoreLoader();
         }
-        if (count <= previousCount && (!loader || loader.style.display === "none"))
-          break;
+        // Hidden native loader does not prove that no request is in flight.
         const deadline = Date.now() + 15000;
         while (
           count <= previousCount &&

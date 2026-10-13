@@ -16,7 +16,7 @@ const fixture = `<!doctype html><html><head>
 </head><body><main class="feed-page"><div class="content-list"><div id="posts"></div><div id="trigger"><div class="content-list__loader" style="display:none"></div></div></div></main>
 <script>
 setTimeout(() => {
-const get = (key, fallback) => ({feedExtraPosts:true, feedPostMultiplier:2})[key] ?? fallback;
+const get = (key, fallback) => ({feedExtraPosts:true, feedPostMultiplier:3})[key] ?? fallback;
 let wakeRestore = null;
 const posts = document.querySelector('#posts');
 const addPosts = count => {
@@ -34,20 +34,21 @@ const checkGeometry = () => {
 checkGeometry();
 const loader = document.querySelector('.content-list__loader');
 let requests = 0;
+let busy = false;
 const observer = new IntersectionObserver(([entry]) => {
-  if (!entry.isIntersecting || loader.style.display !== 'none') return;
+  if (!entry.isIntersecting || busy) return;
+  busy = true;
   requests++;
-  loader.style.display = 'block';
   setTimeout(() => {
+    busy = false;
     addPosts(12); checkGeometry();
-    setTimeout(() => { loader.style.display = 'none'; }, 120);
-  }, 100);
+  }, 4000);
 }, {rootMargin:'200% 0px'});
 observer.observe(document.querySelector('#trigger'));
 ${source.slice(start, end)}
 loadExtraFeedPosts().then(() => {
-  if (requests !== 2 || feedPosts().length !== 48) throw Error('native pagination failed: ' + requests);
-  if (heights.length !== 3 || heights.some((height, index) => index && height <= heights[index - 1])) throw Error('new cards not in document flow');
+  if (requests !== 4 || feedPosts().length !== 72) throw Error('native pagination failed: ' + requests);
+  if (heights.length !== 5 || heights.some((height, index) => index && height <= heights[index - 1])) throw Error('new cards not in document flow');
   if (getComputedStyle(posts).visibility !== 'visible') throw Error('completed posts invisible');
   if (scrollY !== 0) throw Error('viewport moved');
   document.body.dataset.result = 'PASS';
@@ -66,7 +67,7 @@ fs.writeFileSync(path.join(dir, "test.html"), fixture);
   const pause = () => new Promise(resolve => setTimeout(resolve, 50));
   try {
     const portFile = path.join(profile, "DevToolsActivePort");
-    const deadline = Date.now() + 20000;
+    const deadline = Date.now() + 30000;
     while (!fs.existsSync(portFile) && Date.now() < deadline) await pause();
     const port = fs.readFileSync(portFile, "utf8").split("\n")[0];
     const tabs = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
@@ -88,7 +89,7 @@ fs.writeFileSync(path.join(dir, "test.html"), fixture);
       await pause();
     }
     assert.equal(result, "PASS", result || "missing browser result");
-    console.log("OK: immediately visible feed, native IntersectionObserver pagination, no forced scroll");
+    console.log("OK: visible 3x feed with hidden native loader, delayed responses, and no forced scroll");
   } finally {
     socket?.close();
     const exited = new Promise(resolve => browser.once("exit", resolve));

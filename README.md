@@ -8,7 +8,7 @@ Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open
 
 ## Initial feed loading
 
-When **Дополнительно загружать посты** is enabled, existing posts remain visible while native DTF pagination loads selected batch. No additional loading text or display gate is added. Initial card-count stabilization starts as soon as cards arrive; pagination stops after trigger timeout instead of waiting for response to request that never started. Network speed and sequential cursor pagination remain controlled by DTF.
+When **Дополнительно загружать посты** is enabled, existing posts remain visible while native DTF pagination loads selected batch. No additional loading text or display gate is added. Initial card-count stabilization starts as soon as cards arrive. After native pagination trigger, script waits up to 15 seconds for new cards even if native loader stays hidden; hidden indicator does not prove that no request is in flight. Network speed and sequential cursor pagination remain controlled by DTF.
 
 ## Image loading
 
