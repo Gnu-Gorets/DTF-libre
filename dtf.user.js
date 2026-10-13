@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.101
+// @version      0.0.104
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -99,13 +99,7 @@
   const resetScrollOnReload = () => {
     if (page.performance.getEntriesByType("navigation")[0]?.type !== "reload")
       return;
-    const previousRestoration = page.history.scrollRestoration;
     page.history.scrollRestoration = "manual";
-    page.addEventListener(
-      "pagehide",
-      () => (page.history.scrollRestoration = previousRestoration),
-      { once: true },
-    );
   };
   resetScrollOnReload();
   const setPhotoSwipeZoomLevels = ({ zoomLevels, slideData }) => {
@@ -1358,6 +1352,9 @@
   const expandComments = () => {
     const limits = new WeakSet();
     const pendingLimits = new WeakSet();
+    const restoreReloadTop =
+      page.performance.getEntriesByType("navigation")[0]?.type === "reload" &&
+      page.scrollY === 0;
     const timers = new Set();
     let pumping = false;
     const queue = new Set();
@@ -1406,8 +1403,13 @@
     const collapseHidden = (comment, attempt = 0) => {
       if (!get("skipHiddenComments", true) || !comment.isConnected) return;
       const button = comment.querySelector(branchSelector);
-      if (button?.textContent.includes("Свернуть")) button.click();
-      else if (attempt < 3) {
+      if (button?.textContent.includes("Свернуть")) {
+        button.click();
+        if (restoreReloadTop)
+          page.requestAnimationFrame(() =>
+            page.scrollTo({ top: 0, behavior: "instant" }),
+          );
+      } else if (attempt < 3) {
         const timer = setTimeout(() => {
           timers.delete(timer);
           collapseHidden(comment, attempt + 1);

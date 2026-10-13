@@ -31,9 +31,8 @@ const reloadedFeed = makePage("/", "reload");
 assert.equal(reloadedFeed.page.history.scrollRestoration, "manual");
 assert.equal(reloadedFeed.listeners.pageshow, undefined);
 assert.deepEqual(reloadedFeed.scrollCalls, []);
-assert.equal(reloadedFeed.listeners.pagehide.options.once, true);
-reloadedFeed.listeners.pagehide.callback();
-assert.equal(reloadedFeed.page.history.scrollRestoration, "auto");
+assert.equal(reloadedFeed.listeners.pagehide, undefined);
+assert.equal(reloadedFeed.page.history.scrollRestoration, "manual");
 
 const reloadedNewFeed = makePage("/new/", "reload");
 assert.equal(reloadedNewFeed.page.history.scrollRestoration, "manual");
