@@ -572,7 +572,7 @@
       wakeRestore
     )
       return;
-    const target = loader.parentElement;
+    const target = loader;
     const rect = target.getBoundingClientRect();
     if (rect.top > innerHeight * 6 || rect.bottom < -innerHeight * 2) return;
     const count = list.querySelectorAll(".content").length;

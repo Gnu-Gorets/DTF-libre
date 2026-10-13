@@ -11,25 +11,29 @@ let collapsed = true;
 let top = 1100;
 let pending;
 let exitObserver;
+let observedTarget;
 let cleared = 0;
-const target = {
-  style: {
-    transform: "",
-    getPropertyValue: () => "",
-    getPropertyPriority: () => "",
-    setProperty(name, value) {
-      this[name] = value;
-    },
-  },
-  getBoundingClientRect: () => ({ top, bottom: top + 1 }),
+const parent = {
+  style: { transform: "" },
 };
 const list = {
   querySelector: () => (collapsed ? {} : null),
   querySelectorAll: () => Array(postCount).fill(null),
 };
 const loader = {
-  style: { display: "none" },
-  parentElement: target,
+  style: {
+    display: "none",
+    transform: "translateY(10px)",
+    getPropertyValue(name) {
+      return this[name] || "";
+    },
+    getPropertyPriority: () => "",
+    setProperty(name, value) {
+      this[name] = value;
+    },
+  },
+  parentElement: parent,
+  getBoundingClientRect: () => ({ top, bottom: top + 1 }),
   closest: () => list,
 };
 const context = {
@@ -48,7 +52,9 @@ const context = {
       this.callback = callback;
       exitObserver = this;
     }
-    observe() {}
+    observe(target) {
+      observedTarget = target;
+    }
     disconnect() {}
   },
 };
@@ -57,45 +63,44 @@ vm.runInNewContext(
   context,
 );
 context.wake();
-assert.equal(target.style.transform, "translateY(600vh)");
+assert.equal(loader.style.transform, "translateY(600vh)");
+assert.equal(parent.style.transform, "", "never move visible feed parent");
+assert.equal(observedTarget, loader, "observe only invisible loader sentinel");
 exitObserver.callback([{ isIntersecting: true }]);
 assert.equal(
-  target.style.transform,
+  loader.style.transform,
   "translateY(600vh)",
-  "stay outside until exit",
+  "stay outside until observer confirms exit",
 );
 exitObserver.callback([{ isIntersecting: false }]);
 assert.equal(
-  target.style.transform,
-  "",
-  "restore as soon as observer confirms exit",
+  loader.style.transform,
+  "translateY(10px)",
+  "restore previous loader transform when observer confirms exit",
 );
 assert.equal(cleared, 1, "cancel fallback after observer callback");
 context.wake();
-assert.equal(target.style.transform, "", "only once per batch");
+assert.equal(loader.style.transform, "translateY(10px)", "only once per batch");
 postCount = 24;
 context.wake();
-assert.equal(
-  target.style.transform,
-  "translateY(600vh)",
-  "retry when new posts arrive",
-);
+assert.equal(loader.style.transform, "translateY(600vh)", "retry for new posts");
 pending();
 assert.equal(
-  target.style.transform,
-  "",
+  loader.style.transform,
+  "translateY(10px)",
   "fallback restores when callback is missing",
 );
+assert.equal(parent.style.transform, "", "parent stays in place through restore");
 postCount = 36;
 loader.style.display = "block";
 context.wake();
-assert.equal(target.style.transform, "", "never wake during loading");
+assert.equal(loader.style.transform, "translateY(10px)", "never wake during loading");
 loader.style.display = "none";
 top = 7000;
 context.wake();
-assert.equal(target.style.transform, "", "never wake outside observer range");
+assert.equal(loader.style.transform, "translateY(10px)", "never wake outside observer range");
 top = 1100;
 collapsed = false;
 context.wake();
-assert.equal(target.style.transform, "", "never wake without collapsed posts");
-console.log("OK: collapsed feed intersection retry");
+assert.equal(loader.style.transform, "translateY(10px)", "never wake without collapsed posts");
+console.log("OK: collapsed feed retries pagination without moving visible posts");
