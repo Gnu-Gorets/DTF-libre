@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.95
+// @version      0.0.96
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -96,6 +96,68 @@
   const syncHashtagCards = () =>
     document.querySelectorAll(".content").forEach(syncHashtagCard);
   const page = unsafeWindow;
+  const resetScrollOnReload = () => {
+    if (page.performance.getEntriesByType("navigation")[0]?.type !== "reload")
+      return;
+    page.history.scrollRestoration = "manual";
+  };
+  resetScrollOnReload();
+  const setPhotoSwipeZoomLevels = ({ zoomLevels, slideData }) => {
+    const width = Number(slideData.w || slideData.width);
+    const height = Number(slideData.h || slideData.height);
+    if (!(width > 0 && height > 0)) return;
+    const zoom = Math.max(
+      1,
+      Math.min(
+        4,
+        (page.innerWidth * 0.9) / width,
+        (page.innerHeight * 0.9) / height,
+      ),
+    );
+    if (zoom <= zoomLevels.initial) return;
+    zoomLevels.initial = zoom;
+    zoomLevels.secondary = Math.max(
+      zoomLevels.secondary,
+      Math.min(4, zoom * 1.5),
+    );
+    zoomLevels.max = Math.max(zoomLevels.max, zoomLevels.secondary);
+  };
+  const photoSwipeInstances = new WeakSet();
+  let installPhotoSwipeHook;
+  const attachPhotoSwipe = (pswp) => {
+    if (!pswp || photoSwipeInstances.has(pswp)) return;
+    photoSwipeInstances.add(pswp);
+    pswp.on("zoomLevelsUpdate", setPhotoSwipeZoomLevels);
+    pswp.on("destroy", () => page.requestAnimationFrame(installPhotoSwipeHook));
+  };
+  installPhotoSwipeHook = () => {
+    const descriptor = Object.getOwnPropertyDescriptor(page, "pswp");
+    if (
+      descriptor &&
+      (!descriptor.configurable ||
+        !("value" in descriptor) ||
+        !descriptor.writable)
+    )
+      return;
+    let value = descriptor?.value;
+    Object.defineProperty(page, "pswp", {
+      configurable: true,
+      enumerable: descriptor?.enumerable ?? true,
+      get: () => value,
+      set: (pswp) => {
+        value = pswp;
+        Object.defineProperty(page, "pswp", {
+          configurable: true,
+          enumerable: descriptor?.enumerable ?? true,
+          writable: true,
+          value: pswp,
+        });
+        attachPhotoSwipe(pswp);
+      },
+    });
+    attachPhotoSwipe(value);
+  };
+  installPhotoSwipeHook();
   let plusWasEnabled = false;
   const syncPlus = (notify = false) => {
     const enabled = Boolean(get("plusFeatures", false));
@@ -143,6 +205,56 @@
     event.stopImmediatePropagation();
     syncPlus(true);
   });
+  // DTF exposes video UUIDs but not poster URLs in feed data.
+  const videoPosterForMedia = (media) => {
+    const data = media?.image?.data;
+    if (
+      !data?.isVideo ||
+      !/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(data.uuid || "")
+    )
+      return null;
+    const width = Number(data.width);
+    const targetWidth = Math.min(
+      1280,
+      width > 0 && Number.isFinite(width) ? Math.ceil(width) : 592,
+    );
+    return `https://leonardo.osnova.io/${data.uuid}/-/scale_crop/${targetWidth}x/`;
+  };
+  const videoPostersFromEntry = (item) => {
+    const data = item?.type === "entry" ? item.data : null;
+    const id = String(data?.id ?? "");
+    if (!/^\d+$/.test(id)) return null;
+    const posters = (Array.isArray(data.blocks) ? data.blocks : [])
+      .filter((block) => block?.type === "media")
+      .flatMap((block) =>
+        Array.isArray(block.data?.items) ? block.data.items : [],
+      )
+      .map(videoPosterForMedia)
+      .filter(Boolean);
+    return posters.length ? { id, posters } : null;
+  };
+  const videoPostersById = new Map();
+  const videoPosterPreloads = new Map();
+  const rememberVideoPosters = (items) => {
+    let updated = false;
+    for (const item of items) {
+      const entry = videoPostersFromEntry(item);
+      if (!entry) continue;
+      videoPostersById.set(entry.id, entry.posters);
+      if (videoPostersById.size > 500)
+        videoPostersById.delete(videoPostersById.keys().next().value);
+      updated = true;
+      for (const poster of entry.posters) {
+        if (videoPosterPreloads.has(poster)) continue;
+        const image = new Image();
+        videoPosterPreloads.set(poster, image);
+        image.onload = () => videoPosterPreloads.set(poster, null);
+        image.onerror = () => videoPosterPreloads.delete(poster);
+        image.src = poster;
+      }
+    }
+    if (updated) syncVideoPosters(document);
+  };
   const originalFetch = page.fetch;
   const commentFeedListeners = new Set();
   const recentCommentResponses = [];
@@ -161,6 +273,7 @@
                 const items = data?.result?.items;
                 if (Array.isArray(items)) {
                   syncHashtagFeedItems(items);
+                  rememberVideoPosters(items);
                   const entry = { url: String(url), items };
                   recentCommentResponses.push(entry);
                   if (recentCommentResponses.length > 20)
@@ -460,6 +573,7 @@
     }
     const list = loader?.closest(".content-list");
     if (
+      feedLoading ||
       !list?.querySelector(".dtf-vm-minimized-post") ||
       loader.style.display !== "none" ||
       wakeRestore
@@ -490,6 +604,253 @@
       wakeRestore = null;
     };
   };
+  let initialFeedPending = Boolean(get("feedExtraPosts", false));
+  const initialFeedPath = location.pathname;
+  let initialFeedElement = null;
+  const releaseInitialFeed = () => {
+    if (!initialFeedPending) return;
+    initialFeedPending = false;
+    clearTimeout(initialFeedTimeout);
+    document.documentElement?.classList.remove("dtf-vm-feed-pending");
+  };
+  const initialFeedTimeout = initialFeedPending
+    ? setTimeout(releaseInitialFeed, 60000)
+    : null;
+  const syncInitialFeedGate = () => {
+    if (!initialFeedPending) return;
+    if (
+      !get("feedExtraPosts", false) ||
+      location.pathname !== initialFeedPath ||
+      (initialFeedElement && !initialFeedElement.isConnected)
+    ) {
+      releaseInitialFeed();
+      return;
+    }
+    initialFeedElement ||= document.querySelector(".feed-page");
+    document.documentElement?.classList.add("dtf-vm-feed-pending");
+  };
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) releaseInitialFeed();
+  });
+  let feedInitialPostCount = null;
+  let feedInitialObserver = null;
+  let feedPageSize = 0;
+  let feedBottomLoadHandled = false;
+  let feedLoading = false;
+  let feedVisibilityNeedsSync = false;
+  const feedPosts = () => [
+    ...document.querySelectorAll(".feed-page .content-list .content"),
+  ];
+  const waitForInitialFeedPosts = () => {
+    if (feedInitialObserver || !document.body) return;
+    feedInitialObserver = new MutationObserver(() => {
+      if (!feedPosts().length) return;
+      feedInitialObserver.disconnect();
+      feedInitialObserver = null;
+      void loadExtraFeedPosts();
+    });
+    feedInitialObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  };
+  const waitForInitialFeedReady = async (feed) => {
+    const loader = feed.querySelector(".content-list__loader");
+    let count = feedPosts().length;
+    let stableSince = Date.now();
+    const deadline = stableSince + 3000;
+    while (feed.isConnected && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const nextCount = feedPosts().length;
+      if (nextCount !== count) {
+        count = nextCount;
+        stableSince = Date.now();
+      }
+      if (loader?.style.display && loader.style.display !== "none")
+        stableSince = Date.now();
+      else if (Date.now() - stableSince >= 250) break;
+    }
+    return feedPosts().length;
+  };
+  const feedPostTarget = () =>
+    Math.ceil(
+      feedInitialPostCount *
+        Math.max(1, Math.min(Number(get("feedPostMultiplier", 2)) || 2, 3)),
+    );
+  const syncFeedPostVisibility = () => {
+    if (feedInitialPostCount === null) return;
+    const target = get("feedExtraPosts", false) ? feedPostTarget() : Infinity;
+    feedPosts().forEach((post, index) =>
+      post.classList.toggle("dtf-vm-feed-post-hidden", index >= target),
+    );
+  };
+  const placeLoaderInViewport = async (loader) => {
+    const target = loader?.parentElement;
+    if (!target?.style?.setProperty || !target.getBoundingClientRect)
+      return () => {};
+    const properties = ["translate", "transition"];
+    const previous = properties.map((property) => [
+      property,
+      target.style.getPropertyValue(property),
+      target.style.getPropertyPriority(property),
+    ]);
+    const restore = () =>
+      previous.forEach(([property, value, priority]) =>
+        value
+          ? target.style.setProperty(property, value, priority)
+          : target.style.removeProperty(property),
+      );
+    try {
+      const rect = target.getBoundingClientRect();
+      // Moving already-intersecting loader inside cannot trigger another entry.
+      let offset = Math.round(-window.innerHeight * 4 - rect.bottom);
+      target.style.setProperty("transition", "none", "important");
+      target.style.setProperty("translate", `0 ${offset}px`, "important");
+      const exited = await new Promise((resolve, reject) => {
+        const observer = new IntersectionObserver(
+          ([entry]) => {
+            if (!entry.isIntersecting) finish(true);
+          },
+          { rootMargin: "200% 0px" },
+        );
+        const timer = setTimeout(() => finish(false), 500);
+        function finish(exited) {
+          observer.disconnect();
+          clearTimeout(timer);
+          resolve(exited);
+        }
+        try {
+          observer.observe(target);
+        } catch (error) {
+          observer.disconnect();
+          clearTimeout(timer);
+          reject(error);
+        }
+      });
+      if (!exited) {
+        restore();
+        return () => {};
+      }
+      const moved = target.getBoundingClientRect();
+      offset += Math.round(
+        window.innerHeight / 2 - (moved.top + moved.bottom) / 2,
+      );
+      target.style.setProperty("translate", `0 ${offset}px`, "important");
+      return restore;
+    } catch (error) {
+      restore();
+      throw error;
+    }
+  };
+  const loadExtraFeedPosts = async (target = null, syncVisibility = true) => {
+    const feed = document.querySelector(".feed-page");
+    if (!feed) {
+      if (get("feedExtraPosts", false)) waitForInitialFeedPosts();
+      return;
+    }
+    const initialCount = feedPosts().length;
+    if (feedInitialPostCount === null) {
+      if (feedInitialObserver) return;
+      if (!initialCount) {
+        if (get("feedExtraPosts", false)) waitForInitialFeedPosts();
+        return;
+      }
+    }
+    syncInitialFeedGate();
+    if (syncVisibility) syncFeedPostVisibility();
+    if (!get("feedExtraPosts", false) || feedLoading) return;
+    const initialLoad = feedInitialPostCount === null;
+    const explicitTarget = target !== null;
+    feedVisibilityNeedsSync = false;
+    feedLoading = true;
+    wakeRestore?.();
+    let loaderClassAdded = false;
+    try {
+      if (feedInitialPostCount === null)
+        feedInitialPostCount = await waitForInitialFeedReady(feed);
+      if (!get("feedExtraPosts", false)) return;
+      if (syncVisibility) syncFeedPostVisibility();
+      feed.classList.add("dtf-vm-feed-loading");
+      loaderClassAdded = true;
+      let count = feedPosts().length;
+      while (
+        get("feedExtraPosts", false) &&
+        count < (explicitTarget ? target : feedPostTarget()) &&
+        feed.isConnected
+      ) {
+        const previousCount = count;
+        const loader = feed.querySelector(".content-list__loader");
+        const loaderDeadline = Date.now() + 3000;
+        while (
+          loader &&
+          loader.style.display !== "none" &&
+          Date.now() < loaderDeadline &&
+          feed.isConnected
+        )
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        if (loader && loader.style.display !== "none") break;
+        const restoreLoader = await placeLoaderInViewport(loader);
+        const triggerDeadline = Date.now() + 3000;
+        try {
+          while (
+            count <= previousCount &&
+            (!loader || loader.style.display === "none") &&
+            Date.now() < triggerDeadline &&
+            feed.isConnected
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            count = feedPosts().length;
+          }
+        } finally {
+          restoreLoader();
+        }
+        // Hidden native loader does not prove that no request is in flight.
+        const deadline = Date.now() + 15000;
+        while (
+          count <= previousCount &&
+          Date.now() < deadline &&
+          feed.isConnected
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          count = feedPosts().length;
+        }
+        if (count <= previousCount) break;
+        feedPageSize = count - previousCount;
+        if (feedVisibilityNeedsSync) {
+          syncFeedPostVisibility();
+          feedVisibilityNeedsSync = false;
+        }
+      }
+    } finally {
+      if (loaderClassAdded) feed.classList.remove("dtf-vm-feed-loading");
+      feedLoading = false;
+      if (initialLoad) releaseInitialFeed();
+    }
+  };
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (feedLoading) return;
+      const scroller = document.scrollingElement;
+      const atBottom =
+        window.innerHeight + scroller.scrollTop >=
+        document.documentElement.scrollHeight - 100;
+      if (!atBottom) {
+        feedBottomLoadHandled = false;
+        return;
+      }
+      if (
+        feedBottomLoadHandled ||
+        !get("feedExtraPosts", false) ||
+        feedInitialPostCount === null
+      )
+        return;
+      feedBottomLoadHandled = true;
+      const pageSize = feedPageSize || feedInitialPostCount;
+      void loadExtraFeedPosts(feedPosts().length + pageSize * 2, false);
+    },
+    { passive: true },
+  );
   const postIdForCard = (card) => {
     for (const link of card.querySelectorAll(".content-header a[href]")) {
       if (link.closest(".content") !== card) continue;
@@ -497,6 +858,38 @@
       if (id) return id;
     }
     return null;
+  };
+  const syncVideoPosters = (root = document) => {
+    const cards = new Set([
+      ...(root.matches?.(".content") ? [root] : []),
+      root.closest?.(".content"),
+      ...(root.querySelectorAll?.(".content") || []),
+    ]);
+    cards.delete(null);
+    cards.delete(undefined);
+    for (const card of cards) {
+      const posters = videoPostersById.get(postIdForCard(card));
+      if (!posters) continue;
+      const videos = [...card.querySelectorAll(".andropov-video")].map(
+        (media) => media.querySelector("video"),
+      );
+      videos.forEach((video, index) => {
+        if (video && posters[index] && !video.poster)
+          video.poster = posters[index];
+      });
+    }
+  };
+  // Initial feed is server-rendered, so it bypasses the fetch observer.
+  const rememberInitialVideoPosters = () => {
+    const cardIds = new Set(
+      [...document.querySelectorAll(".feed-page .content")]
+        .map(postIdForCard)
+        .filter(Boolean),
+    );
+    const items = Object.values(page.__INITIAL_STATE__ || {})
+      .flatMap((feed) => (Array.isArray(feed?.items) ? feed.items : []))
+      .filter((item) => cardIds.has(String(item.data?.id ?? "")));
+    rememberVideoPosters(items);
   };
   const saveViewedPosts = () =>
     set(
@@ -668,7 +1061,10 @@
     @media (max-width: 924px) { .layout:has(.view) { --layout-max-width: 100vw !important; } }
     html.dtf-vm-stretch-right .layout:has(.view) { --layout-right-aside-width: 0px !important; }
     html.dtf-vm-stretch-right .layout:has(.entry) { --layout-max-content-width: var(--dtf-feed-width) !important; --layout-max-width: var(--dtf-layout-width) !important; --layout-right-aside-width: 0px !important; }
-    .feed-page:has(.dtf-vm-minimized-post) .content-list__loader { display: block !important; box-sizing: border-box !important; width: 1px !important; height: 1px !important; min-height: 1px !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
+    /* Transparent scrollbar preserves native gutter, layout, and scrolling. */
+    html.dtf-vm-feed-pending:has(.feed-page) { scrollbar-color: transparent transparent !important; }
+    html.dtf-vm-feed-pending:has(.feed-page)::-webkit-scrollbar-thumb, html.dtf-vm-feed-pending:has(.feed-page)::-webkit-scrollbar-track { background: transparent !important; }
+    .feed-page:has(.dtf-vm-minimized-post) .content-list__loader, .feed-page.dtf-vm-feed-loading .content-list__loader { display: block !important; box-sizing: border-box !important; width: 1px !important; height: 1px !important; min-height: 1px !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
     .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; flex-direction: column !important; align-items: center !important; }
     .dtf-vm-centered .block-wrapper--media .andropov-media { margin-inline: auto !important; }
     .dtf-vm-centered .block-wrapper--gallery .mvqlyolt { justify-content: center; }
@@ -683,7 +1079,7 @@
     html.dtf-vm-disable-spoiler-blur .spoiler { display: none !important; }
     .dtf-vm-centered .content__blocks img, .dtf-vm-centered .content__blocks video { display: block; max-width: 100%; height: auto; margin: 0 auto; }
     .dtf-vm-centered .andropov-video-player:fullscreen video, .dtf-vm-centered .andropov-video-player:-moz-full-screen video { height: 100% !important; }
-    .dtf-vm-hashtag-hidden { display: none !important; }
+    .dtf-vm-hashtag-hidden, .dtf-vm-feed-post-hidden { display: none !important; }
     .dtf-vm-minimized-post .content__blocks, .dtf-vm-minimized-post .content__read-more, .dtf-vm-minimized-post .content-comment { display: none !important; }
     .dtf-vm-minimized-post .content-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .dtf-vm-viewed-button { display: flex; align-items: center; order: -1; padding: 0; color: var(--theme-color-text-primary); background: var(--theme-color-button-minimal); border: 0; border-radius: 10px; cursor: pointer; }
@@ -767,7 +1163,6 @@
     .dtf-vm-topic-show-all { width: 100%; color: inherit; background: none; border: 0; font: inherit; text-align: left; }
     html.dtf-vm-hide-footer :has(> [data-section="footer"]) { display: none !important; }
     html.dtf-vm-hide-donations-menu [href*="/donat"], html.dtf-vm-hide-plus-menu [href*="/plus"] { display: none !important; }
-    html.dtf-vm-waiting-css body { visibility: hidden !important; }
     @media (min-width: 1240px) {
       html.dtf-vm-hide-right-sidebar .layout > .aside.aside--right { display: none !important; }
       .dtf-vm-live-panel { grid-column: 3; grid-row: 1; margin-left: 8px; position: sticky; top: var(--layout-header-height); width: var(--layout-right-aside-width, 320px); height: calc(100vh - var(--layout-header-height)); padding-top: 16px; color: var(--theme-color-text-primary); }
@@ -914,51 +1309,6 @@
     set("personalizationEnabled", true);
     applyPersonalization();
   };
-  const waitForDtfStyles = () => {
-    const root = document.documentElement;
-    if (!root) {
-      const observer = new MutationObserver(() => {
-        if (!document.documentElement) return;
-        observer.disconnect();
-        waitForDtfStyles();
-      });
-      observer.observe(document, { childList: true });
-      return;
-    }
-    const className = "dtf-vm-waiting-css";
-    root.classList.add(className);
-    let settled = false;
-    let observer;
-    const timeout = setTimeout(reveal, 5000);
-    function reveal() {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      observer?.disconnect();
-      root.classList.remove(className);
-    }
-    const watchStylesheet = () => {
-      const link = document.querySelector(
-        'link[rel="stylesheet"][href*="/assets/index-"]',
-      );
-      if (!link) return false;
-      if (document.readyState === "complete" && link.sheet) reveal();
-      else {
-        link.addEventListener("load", reveal, { once: true });
-        link.addEventListener("error", reveal, { once: true });
-        window.addEventListener("load", reveal, { once: true });
-      }
-      return true;
-    };
-    if (!watchStylesheet()) {
-      observer = new MutationObserver(() => {
-        if (watchStylesheet()) observer.disconnect();
-      });
-      observer.observe(root, { childList: true, subtree: true });
-    }
-  };
-  waitForDtfStyles();
-
   const attachStyles = () => {
     if (!document.head) return false;
     if (style.parentElement !== document.head) document.head.append(style);
@@ -972,6 +1322,7 @@
   const primeLayout = () => {
     const root = document.documentElement;
     if (!root) return;
+    syncInitialFeedGate();
     applySidebarClasses(root);
     root.classList.toggle("dtf-vm-stretch-right", stretchRightActive());
     attachStyles();
@@ -1001,6 +1352,9 @@
   const expandComments = () => {
     const limits = new WeakSet();
     const pendingLimits = new WeakSet();
+    const restoreReloadTop =
+      page.performance.getEntriesByType("navigation")[0]?.type === "reload" &&
+      page.scrollY === 0;
     const timers = new Set();
     let pumping = false;
     const queue = new Set();
@@ -1049,8 +1403,13 @@
     const collapseHidden = (comment, attempt = 0) => {
       if (!get("skipHiddenComments", true) || !comment.isConnected) return;
       const button = comment.querySelector(branchSelector);
-      if (button?.textContent.includes("Свернуть")) button.click();
-      else if (attempt < 3) {
+      if (button?.textContent.includes("Свернуть")) {
+        button.click();
+        if (restoreReloadTop)
+          page.requestAnimationFrame(() =>
+            page.scrollTo({ top: 0, behavior: "instant" }),
+          );
+      } else if (attempt < 3) {
         const timer = setTimeout(() => {
           timers.delete(timer);
           collapseHidden(comment, attempt + 1);
@@ -2332,6 +2691,18 @@
       };
       requestPage();
     };
+    const prioritizePostImages = (root = document) => {
+      const selector =
+        ".block-wrapper--media .andropov-image img, .block-wrapper--gallery .andropov-image img";
+      const images = [
+        ...(root.matches?.(selector) ? [root] : []),
+        ...(root.querySelectorAll?.(selector) || []),
+      ];
+      images.forEach((image) => {
+        image.loading = "eager";
+        image.decoding = "async";
+      });
+    };
     const setQuality = (enabled, galleryEnabled = false) => {
       document
         .querySelectorAll(
@@ -2448,6 +2819,7 @@
     };
 
     const apply = () => {
+      syncInitialFeedGate();
       document.documentElement.classList.toggle(
         "dtf-vm-header-width",
         Boolean(get("headerWidth", false)),
@@ -2577,7 +2949,7 @@
       );
       const overlay = document.createElement("div");
       overlay.className = "dtf-vm-overlay";
-      overlay.innerHTML = `<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-title">Настройки</h2><div class="dtf-vm-settings-grid"><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Лента и изображения</h3><label>Ширина ленты: <output>${width}%</output><input name="width" type="range" min="50" max="100" step="5" value="${width}"><small class="dtf-vm-hint">Работает при ширине окна от 925 px.</small></label><label><input name="centered" type="checkbox" ${get("centered", false) ? "checked" : ""}> Центрировать изображения</label><label><input name="classicGallery" type="checkbox" ${get("classicGallery", false) ? "checked" : ""}> Классическая галерея<small class="dtf-vm-hint">Показывает галерею сеткой.</small></label><label class="dtf-vm-subsetting">Изображений до 4–8: <output>${galleryPreviewCount}</output><input name="galleryPreviewCount" type="range" min="4" max="8" step="1" value="${galleryPreviewCount}"></label><label><input name="disableSpoilerBlur" type="checkbox" ${get("disableSpoilerBlur", false) ? "checked" : ""}> Отключить размытие спойлеров</label><label><input name="quality" type="checkbox" ${get("quality", false) ? "checked" : ""}> Повысить качество</label><label><input name="pauseVideosOnScroll" type="checkbox" ${get("pauseVideosOnScroll", false) ? "checked" : ""}> Пауза при скролле<small class="dtf-vm-hint">Ставит видео на паузу, когда оно выходит из области видимости.</small></label><label><input name="pauseVideosByDefault" type="checkbox" ${get("pauseVideosByDefault", false) ? "checked" : ""}> Пауза по умолчанию<small class="dtf-vm-hint">Ставит новые видео на паузу, чтобы они не запускались сами.</small></label><label class="dtf-vm-dependent"><input name="stretchRight" type="checkbox" ${get("stretchRight", false) ? "checked" : ""}> Растянуть вправо<small class="dtf-vm-hint">Использовать место скрытой правой панели.</small></label><label><input name="hideViewedPosts" type="checkbox" ${get("hideViewedPosts", false) ? "checked" : ""}> Скрывать просмотренное<small class="dtf-vm-hint">Автоматически сворачивать просмотренные посты.</small></label><label class="dtf-vm-subsetting"><input name="showHideButton" type="checkbox" ${get("showHideButton", false) ? "checked" : ""}> Кнопки управления<small class="dtf-vm-hint">Добавить кнопки показать/скрыть на посты.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Хэштеги</h3><button class="dtf-vm-manage-hashtags" type="button">Фильтр хэштегов<small class="dtf-vm-hint">Посты без хэштегов остаются в ленте.</small></button></div><div class="dtf-vm-section"><h3>Шапка</h3><label><input name="headerWidth" type="checkbox" ${get("headerWidth", false) ? "checked" : ""}> Подогнать шапку под ширину ленты</label><label><input name="plainHeaderSearch" type="checkbox" ${get("plainHeaderSearch", false) ? "checked" : ""}> Лупа без звёздочки</label><label><input name="hideDonationsMenu" type="checkbox" ${get("hideDonationsMenu", false) ? "checked" : ""}> Скрыть «Донаты» в меню профиля</label><label><input name="hidePlusMenu" type="checkbox" ${get("hidePlusMenu", false) ? "checked" : ""}> Скрыть «Подписка Plus» в меню профиля</label></div><div class="dtf-vm-section"><h3>Интерфейс</h3><label><input name="backToTop" type="checkbox" ${get("backToTop", false) ? "checked" : ""}> Кнопка «Наверх»</label><label><input name="smallFixes" type="checkbox" ${get("smallFixes", false) ? "checked" : ""}> Улучшения интерфейса<small class="dtf-vm-hint">Добавляет темы и меняет поле комментария.</small></label></div><div class="dtf-vm-section"><h3>Комментарии</h3><label><input name="expandComments" type="checkbox" ${get("expandComments", true) ? "checked" : ""}> Раскрывать комментарии<small class="dtf-vm-hint">Автоматически раскрывает свернутый список комментариев.</small></label><label class="dtf-vm-subsetting"><input name="expandAllBranches" type="checkbox" ${get("expandAllBranches", false) ? "checked" : ""}> Раскрывать ответы<small class="dtf-vm-hint">Автоматически раскрывает ответы во всех ветках. На длинных обсуждениях может замедлить страницу.</small></label><label class="dtf-vm-subsetting"><input name="skipHiddenComments" type="checkbox" ${get("skipHiddenComments", true) ? "checked" : ""}> Не раскрывать скрытые комментарии</label><label><input name="showRemovedComments" type="checkbox" ${get("showRemovedComments", true) ? "checked" : ""}> Показывать удалённые комментарии</label><label class="dtf-vm-subsetting"><input name="showCommentEdits" type="checkbox" ${get("showCommentEdits", true) ? "checked" : ""}> Показывать историю изменений</label><label class="dtf-vm-subsetting"><input name="showHiddenComments" type="checkbox" ${get("showHiddenComments", true) ? "checked" : ""}> Показывать комментарии, скрытые модерацией</label><label><input name="hideCommentMedia" type="checkbox" ${get("hideCommentMedia", false) ? "checked" : ""}> Скрывать вложения</label><label class="dtf-vm-subsetting"><input name="hideCommentGifs" type="checkbox" ${get("hideCommentGifs", false) ? "checked" : ""}> Скрывать GIF</label><label class="dtf-vm-subsetting"><input name="hideCommentImages" type="checkbox" ${get("hideCommentImages", false) ? "checked" : ""}> Скрывать изображения</label><label class="dtf-vm-subsetting"><input name="hideCommentVideos" type="checkbox" ${get("hideCommentVideos", false) ? "checked" : ""}> Скрывать видео</label><label class="dtf-vm-subsetting"><input name="showMediaRestore" type="checkbox" ${get("showMediaRestore", true) ? "checked" : ""}> Кнопка «Показать»</label><label><input name="showNoCommentIcon" type="checkbox" ${get("showNoCommentIcon", true) ? "checked" : ""}> Показывать, почему нельзя комментировать</label><label><input name="enableCommentQuote" type="checkbox" ${get("enableCommentQuote", true) ? "checked" : ""}> Добавлять цитату в комментарий</label><label class="dtf-vm-subsetting"><input name="quoteMoveTo" type="checkbox" ${get("quoteMoveTo", false) ? "checked" : ""}> Кнопка перехода к полю комментария</label></div><div class="dtf-vm-section"><h3>Правая панель</h3><label><input name="hideRightSidebar" type="checkbox" ${get("hideRightSidebar", false) ? "checked" : ""}> Скрыть «Популярные комментарии»</label><label class="dtf-vm-dependent"><input name="livePanel" type="checkbox" ${get("livePanel", false) ? "checked" : ""}> Live-панель<small class="dtf-vm-hint">Показывает ленту с последними комментариями.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Темы</h3><label><input name="topicSearchEnabled" type="checkbox" ${get("topicSearchEnabled", false) ? "checked" : ""}> Поиск по темам</label><label><input name="onlySubscribedTopics" type="checkbox" ${get("onlySubscribedTopics", false) ? "checked" : ""}> Показывать только темы из моих подписок</label><label>Тем до «Показать все»: <output>${topicLimit}</output><input name="topicLimit" type="range" min="5" max="${topicLimitMax}" step="1" value="${topicLimit}"></label><label><input name="sortTopics" type="checkbox" ${get("sortTopics", false) ? "checked" : ""}> Сортировать темы: EN, затем RU</label><label><input name="reorderTopics" type="checkbox" ${get("reorderTopics", false) ? "checked" : ""}> Менять порядок тем<small class="dtf-vm-hint">Перетаскивайте темы в списке слева.</small></label><button class="dtf-vm-reset-topics" type="button">Сбросить сохранённый порядок</button><button class="dtf-vm-manage-hidden-topics" type="button">Показать/скрыть темы</button></div><div class="dtf-vm-section"><h3>Разное</h3><label><input name="hidePlusAds" type="checkbox" ${get("hidePlusAds", false) ? "checked" : ""}> Скрывать рекламу<small class="dtf-vm-hint">Скрывает рекламные баннеры, промо и виджеты оплаты.</small></label><label><input name="plusFeatures" type="checkbox" ${get("plusFeatures", false) ? "checked" : ""}> Функции Plus<small class="dtf-vm-hint">ЛС, история GIF и скрытые комментарии. Серверные функции не гарантированы.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Левая панель</h3><label><input name="hidePopular" type="checkbox" ${get("hidePopular", false) ? "checked" : ""}> Скрыть «Популярное»</label><label><input name="hideNew" type="checkbox" ${get("hideNew", false) ? "checked" : ""}> Скрыть «Свежее»</label><label><input name="hideMy" type="checkbox" ${get("hideMy", false) ? "checked" : ""}> Скрыть «Моя лента»</label><label><input name="hideMessages" type="checkbox" ${get("hideMessages", false) ? "checked" : ""}> Скрыть «Сообщения»</label><label><input name="hideRating" type="checkbox" ${get("hideRating", false) ? "checked" : ""}> Скрыть «Рейтинг»</label><label><input name="hideGames" type="checkbox" ${get("hideGames", false) ? "checked" : ""}> Скрыть раздел «Игры»</label><label><input name="hideTopics" type="checkbox" ${get("hideTopics", false) ? "checked" : ""}> Скрыть раздел «Темы»</label><label><input name="hideFooter" type="checkbox" ${get("hideFooter", false) ? "checked" : ""}> Скрыть нижний блок меню DTF</label></div></div></div></section>`;
+      overlay.innerHTML = `<section class="dtf-vm-dialog" role="dialog" aria-modal="true" aria-labelledby="dtf-vm-title"><button class="dtf-vm-close" aria-label="Закрыть">×</button><h2 id="dtf-vm-title">Настройки</h2><div class="dtf-vm-settings-grid"><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Лента и изображения</h3><label>Ширина ленты: <output>${width}%</output><input name="width" type="range" min="50" max="100" step="5" value="${width}"><small class="dtf-vm-hint">Работает при ширине окна от 925 px.</small></label><label><input name="centered" type="checkbox" ${get("centered", false) ? "checked" : ""}> Центрировать изображения</label><label><input name="classicGallery" type="checkbox" ${get("classicGallery", false) ? "checked" : ""}> Классическая галерея<small class="dtf-vm-hint">Показывает галерею сеткой.</small></label><label class="dtf-vm-subsetting">Изображений до 4–8: <output>${galleryPreviewCount}</output><input name="galleryPreviewCount" type="range" min="4" max="8" step="1" value="${galleryPreviewCount}"></label><label><input name="disableSpoilerBlur" type="checkbox" ${get("disableSpoilerBlur", false) ? "checked" : ""}> Отключить размытие спойлеров</label><label><input name="quality" type="checkbox" ${get("quality", false) ? "checked" : ""}> Повысить качество</label><label><input name="pauseVideosOnScroll" type="checkbox" ${get("pauseVideosOnScroll", false) ? "checked" : ""}> Пауза при скролле<small class="dtf-vm-hint">Ставит видео на паузу, когда оно выходит из области видимости.</small></label><label><input name="pauseVideosByDefault" type="checkbox" ${get("pauseVideosByDefault", false) ? "checked" : ""}> Пауза по умолчанию<small class="dtf-vm-hint">Ставит новые видео на паузу, чтобы они не запускались сами.</small></label><label class="dtf-vm-dependent"><input name="stretchRight" type="checkbox" ${get("stretchRight", false) ? "checked" : ""}> Растянуть вправо<small class="dtf-vm-hint">Использовать место скрытой правой панели.</small></label><label><input name="feedExtraPosts" type="checkbox" ${get("feedExtraPosts", false) ? "checked" : ""}> Дополнительно загружать посты<small class="dtf-vm-hint">Автоматически подгружает посты при открытии ленты.</small></label><label class="dtf-vm-subsetting">Количество постов: <output>${Math.max(1, Math.min(Number(get("feedPostMultiplier", 2)) || 2, 3))}×</output><input name="feedPostMultiplier" type="range" min="1" max="3" step="0.5" value="${Math.max(1, Math.min(Number(get("feedPostMultiplier", 2)) || 2, 3))}"></label><label><input name="hideViewedPosts" type="checkbox" ${get("hideViewedPosts", false) ? "checked" : ""}> Скрывать просмотренное<small class="dtf-vm-hint">Автоматически сворачивать просмотренные посты.</small></label><label class="dtf-vm-subsetting"><input name="showHideButton" type="checkbox" ${get("showHideButton", false) ? "checked" : ""}> Кнопки управления<small class="dtf-vm-hint">Добавить кнопки показать/скрыть на посты.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Хэштеги</h3><button class="dtf-vm-manage-hashtags" type="button">Фильтр хэштегов<small class="dtf-vm-hint">Посты без хэштегов остаются в ленте.</small></button></div><div class="dtf-vm-section"><h3>Шапка</h3><label><input name="headerWidth" type="checkbox" ${get("headerWidth", false) ? "checked" : ""}> Подогнать шапку под ширину ленты</label><label><input name="plainHeaderSearch" type="checkbox" ${get("plainHeaderSearch", false) ? "checked" : ""}> Лупа без звёздочки</label><label><input name="hideDonationsMenu" type="checkbox" ${get("hideDonationsMenu", false) ? "checked" : ""}> Скрыть «Донаты» в меню профиля</label><label><input name="hidePlusMenu" type="checkbox" ${get("hidePlusMenu", false) ? "checked" : ""}> Скрыть «Подписка Plus» в меню профиля</label></div><div class="dtf-vm-section"><h3>Интерфейс</h3><label><input name="backToTop" type="checkbox" ${get("backToTop", false) ? "checked" : ""}> Кнопка «Наверх»</label><label><input name="smallFixes" type="checkbox" ${get("smallFixes", false) ? "checked" : ""}> Улучшения интерфейса<small class="dtf-vm-hint">Добавляет темы и меняет поле комментария.</small></label></div><div class="dtf-vm-section"><h3>Комментарии</h3><label><input name="expandComments" type="checkbox" ${get("expandComments", true) ? "checked" : ""}> Раскрывать комментарии<small class="dtf-vm-hint">Автоматически раскрывает свернутый список комментариев.</small></label><label class="dtf-vm-subsetting"><input name="expandAllBranches" type="checkbox" ${get("expandAllBranches", false) ? "checked" : ""}> Раскрывать ответы<small class="dtf-vm-hint">Автоматически раскрывает ответы во всех ветках. На длинных обсуждениях может замедлить страницу.</small></label><label class="dtf-vm-subsetting"><input name="skipHiddenComments" type="checkbox" ${get("skipHiddenComments", true) ? "checked" : ""}> Не раскрывать скрытые комментарии</label><label><input name="showRemovedComments" type="checkbox" ${get("showRemovedComments", true) ? "checked" : ""}> Показывать удалённые комментарии</label><label class="dtf-vm-subsetting"><input name="showCommentEdits" type="checkbox" ${get("showCommentEdits", true) ? "checked" : ""}> Показывать историю изменений</label><label class="dtf-vm-subsetting"><input name="showHiddenComments" type="checkbox" ${get("showHiddenComments", true) ? "checked" : ""}> Показывать комментарии, скрытые модерацией</label><label><input name="hideCommentMedia" type="checkbox" ${get("hideCommentMedia", false) ? "checked" : ""}> Скрывать вложения</label><label class="dtf-vm-subsetting"><input name="hideCommentGifs" type="checkbox" ${get("hideCommentGifs", false) ? "checked" : ""}> Скрывать GIF</label><label class="dtf-vm-subsetting"><input name="hideCommentImages" type="checkbox" ${get("hideCommentImages", false) ? "checked" : ""}> Скрывать изображения</label><label class="dtf-vm-subsetting"><input name="hideCommentVideos" type="checkbox" ${get("hideCommentVideos", false) ? "checked" : ""}> Скрывать видео</label><label class="dtf-vm-subsetting"><input name="showMediaRestore" type="checkbox" ${get("showMediaRestore", true) ? "checked" : ""}> Кнопка «Показать»</label><label><input name="showNoCommentIcon" type="checkbox" ${get("showNoCommentIcon", true) ? "checked" : ""}> Показывать, почему нельзя комментировать</label><label><input name="enableCommentQuote" type="checkbox" ${get("enableCommentQuote", true) ? "checked" : ""}> Добавлять цитату в комментарий</label><label class="dtf-vm-subsetting"><input name="quoteMoveTo" type="checkbox" ${get("quoteMoveTo", false) ? "checked" : ""}> Кнопка перехода к полю комментария</label></div><div class="dtf-vm-section"><h3>Правая панель</h3><label><input name="hideRightSidebar" type="checkbox" ${get("hideRightSidebar", false) ? "checked" : ""}> Скрыть «Популярные комментарии»</label><label class="dtf-vm-dependent"><input name="livePanel" type="checkbox" ${get("livePanel", false) ? "checked" : ""}> Live-панель<small class="dtf-vm-hint">Показывает ленту с последними комментариями.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Темы</h3><label><input name="topicSearchEnabled" type="checkbox" ${get("topicSearchEnabled", false) ? "checked" : ""}> Поиск по темам</label><label><input name="onlySubscribedTopics" type="checkbox" ${get("onlySubscribedTopics", false) ? "checked" : ""}> Показывать только темы из моих подписок</label><label>Тем до «Показать все»: <output>${topicLimit}</output><input name="topicLimit" type="range" min="5" max="${topicLimitMax}" step="1" value="${topicLimit}"></label><label><input name="sortTopics" type="checkbox" ${get("sortTopics", false) ? "checked" : ""}> Сортировать темы: EN, затем RU</label><label><input name="reorderTopics" type="checkbox" ${get("reorderTopics", false) ? "checked" : ""}> Менять порядок тем<small class="dtf-vm-hint">Перетаскивайте темы в списке слева.</small></label><button class="dtf-vm-reset-topics" type="button">Сбросить сохранённый порядок</button><button class="dtf-vm-manage-hidden-topics" type="button">Показать/скрыть темы</button></div><div class="dtf-vm-section"><h3>Разное</h3><label><input name="hidePlusAds" type="checkbox" ${get("hidePlusAds", false) ? "checked" : ""}> Скрывать рекламу<small class="dtf-vm-hint">Скрывает рекламные баннеры, промо и виджеты оплаты.</small></label><label><input name="plusFeatures" type="checkbox" ${get("plusFeatures", false) ? "checked" : ""}> Функции Plus<small class="dtf-vm-hint">ЛС, история GIF и скрытые комментарии. Серверные функции не гарантированы.</small></label></div></div><div class="dtf-vm-settings-column"><div class="dtf-vm-section"><h3>Левая панель</h3><label><input name="hidePopular" type="checkbox" ${get("hidePopular", false) ? "checked" : ""}> Скрыть «Популярное»</label><label><input name="hideNew" type="checkbox" ${get("hideNew", false) ? "checked" : ""}> Скрыть «Свежее»</label><label><input name="hideMy" type="checkbox" ${get("hideMy", false) ? "checked" : ""}> Скрыть «Моя лента»</label><label><input name="hideMessages" type="checkbox" ${get("hideMessages", false) ? "checked" : ""}> Скрыть «Сообщения»</label><label><input name="hideRating" type="checkbox" ${get("hideRating", false) ? "checked" : ""}> Скрыть «Рейтинг»</label><label><input name="hideGames" type="checkbox" ${get("hideGames", false) ? "checked" : ""}> Скрыть раздел «Игры»</label><label><input name="hideTopics" type="checkbox" ${get("hideTopics", false) ? "checked" : ""}> Скрыть раздел «Темы»</label><label><input name="hideFooter" type="checkbox" ${get("hideFooter", false) ? "checked" : ""}> Скрыть нижний блок меню DTF</label></div></div></div></section>`;
       const columns = overlay.querySelectorAll(".dtf-vm-settings-column");
       const sections = [
         ...overlay.querySelectorAll(
@@ -2615,6 +2987,7 @@
       }
       const subsettingGroups = {
         classicGallery: ["galleryPreviewCount"],
+        feedExtraPosts: ["feedPostMultiplier"],
         hideViewedPosts: ["showHideButton"],
         expandComments: ["expandAllBranches", "skipHiddenComments"],
         showRemovedComments: ["showCommentEdits", "showHiddenComments"],
@@ -2758,6 +3131,15 @@
           event.target.value;
         apply();
       };
+      overlay.querySelector("[name=feedPostMultiplier]").oninput = (event) => {
+        const multiplier = Number(event.target.value);
+        if (feedLoading) feedVisibilityNeedsSync = true;
+        set("feedPostMultiplier", multiplier);
+        event.target.closest("label").querySelector("output").value =
+          `${multiplier}×`;
+        syncFeedPostVisibility();
+        void loadExtraFeedPosts();
+      };
       overlay.querySelector("[name=topicLimit]").oninput = (event) => {
         set("topicLimit", Number(event.target.value));
         topicsExpanded = false;
@@ -2768,6 +3150,7 @@
       };
       const dependencies = {
         classicGallery: ["galleryPreviewCount"],
+        feedExtraPosts: ["feedPostMultiplier"],
         expandComments: ["expandAllBranches", "skipHiddenComments"],
         showRemovedComments: ["showCommentEdits", "showHiddenComments"],
         hideCommentMedia: [
@@ -2804,6 +3187,7 @@
         "headerWidth",
         "plainHeaderSearch",
         "backToTop",
+        "feedExtraPosts",
         "hideRightSidebar",
         "livePanel",
         "smallFixes",
@@ -2841,6 +3225,11 @@
         overlay.querySelector(`[name=${name}]`).onchange = (event) => {
           set(name, event.target.checked);
           syncDependencies();
+          if (name === "feedExtraPosts") {
+            if (feedLoading) feedVisibilityNeedsSync = true;
+            syncFeedPostVisibility();
+            void loadExtraFeedPosts();
+          }
           if (
             [
               "expandComments",
@@ -3144,7 +3533,15 @@
     window.addEventListener("scroll", pauseVideosOutsideViewport, {
       passive: true,
     });
+    prioritizePostImages();
+    syncVideoPosters();
+    if (document.readyState === "loading")
+      page.addEventListener("DOMContentLoaded", rememberInitialVideoPosters, {
+        once: true,
+      });
+    else rememberInitialVideoPosters();
     apply();
+    void loadExtraFeedPosts();
     window.addEventListener("resize", apply);
     let applyFrame = null;
     const scheduleApply = () => {
@@ -3154,7 +3551,20 @@
         apply();
       });
     };
-    new MutationObserver(scheduleApply).observe(document.body, {
+    new MutationObserver((records) => {
+      for (const { addedNodes } of records)
+        for (const node of addedNodes)
+          if (node instanceof Element) {
+            prioritizePostImages(node);
+            if (
+              node.matches(".content, .andropov-video, video") ||
+              node.closest(".andropov-video") ||
+              node.querySelector(".andropov-video")
+            )
+              syncVideoPosters(node);
+          }
+      scheduleApply();
+    }).observe(document.body, {
       childList: true,
       subtree: true,
     });

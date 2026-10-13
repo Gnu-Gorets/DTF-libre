@@ -18,6 +18,8 @@ const handlers = [];
 const notifications = [];
 let onLoad;
 const page = {
+  location: { pathname: "/" },
+  performance: { getEntriesByType: () => [{ type: "navigate" }] },
   localStorage: {
     getItem: (key) => storage.get(key) ?? null,
     setItem: (key, value) => storage.set(key, value),
@@ -54,7 +56,8 @@ const context = {
   },
   unsafeWindow: page,
   document: { readyState: "loading" },
-  window: { innerWidth: 1920 },
+  window: { innerWidth: 1920, addEventListener() {} },
+  MutationObserver: class { observe() {} disconnect() {} },
   location: { href: "https://dtf.ru/", origin: "https://dtf.ru" },
   URL,
   console,

@@ -6,11 +6,21 @@ Userscript for DTF feed layout and image loading.
 
 Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open `https://dtf.ru/`, then select `Настройки` in userscript manager menu of this JS script. Replace existing installation rather than running multiple copies. Personalization settings include six theme colors, optional HTTPS background image URL, and theme-code import/export; Violentmonkey stores settings separately from script updates.
 
+## Initial feed loading
+
+Native skeletons, header controls, and arriving cards remain visible during loading. Userscript does not hide page while waiting for DTF stylesheets or hold cards until complete batch arrives. Styles and layout still depend on native DTF CSS loading.
+
+When **Дополнительно загружать посты** is enabled on page load, only scrollbar colors become transparent until selected batch is ready. Native gutter and scrolling remain unchanged. Scrollbar returns after completion or failed pagination, at most 60 seconds, or when setting is disabled or route changes. No loading text or forced scroll is added. Later infinite scrolling remains native and changes scrollbar size as posts arrive.
+
+Firefox users who see scrollbar briefly before userscript starts can enable **Alternative page mode** in Violentmonkey advanced settings. This preserves page-context hooks and allows earlier styling. Manager startup remains outside userscript control; `document-start` alone does not guarantee execution before page scripts. See [Violentmonkey injection timing](https://violentmonkey.github.io/api/metadata-block/#run-at). Do not switch injection context to `content`: this script needs page JavaScript access.
+
+Extra loading starts after first userscript layout pass without waiting for DOMContentLoaded; initial card-count stabilization starts as soon as cards arrive. Before each native pagination trigger, script moves loader wrapper above observer area, waits up to 500 ms for confirmed exit, then moves it into viewport. This retriggers pagination even when collapsed cards leave loader already intersecting. Temporary styles are restored; if exit cannot be confirmed, existing late-response wait remains active. After native pagination trigger, script waits up to 15 seconds for new cards even if native loader stays hidden; hidden indicator does not prove that no request is in flight. Network speed and sequential cursor pagination remain controlled by DTF.
+
 ## Image loading
 
-- Post images, including galleries and article images, load eagerly. Chromium handles parallel requests; no custom sequential download queue exists.
-- Image decoding uses `async`. Ready images appear without opacity fade. Cached images recover missing `data-loaded` state.
-- Blurred post thumbnails are replaced with a loading message while waiting. Failed images show an error message. This changes loading presentation, not CDN response time.
+- Post media and gallery images load eagerly, including when new posts are added while scrolling. Avatar and other small images keep native lazy loading. Chromium handles image requests in parallel; no custom sequential download queue exists.
+- Video poster images are prefetched from API and initial server-rendered feed data before playback. MP4 streams remain under DTF's lazy-loading behavior to avoid downloading unseen videos in full.
+- Post media uses asynchronous image decoding. The userscript does not add loading or failure placeholders; CDN/network failures remain visible as provided by DTF/browser.
 - The image quality setting selects responsive image sizes through `picture`/`srcset`, accounts for pixel density once, and limits each variant to 2560 px. Repeated DOM updates preserve selected URLs; resize recomputes sizes, disabling quality restores original URLs and styles. Classic galleries use uncropped original images to avoid blur when CSS enlarges them.
 - DOM updates share one animation-frame callback instead of repeatedly applying settings within one frame.
 

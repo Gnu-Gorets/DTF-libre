@@ -4,36 +4,43 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync("dtf.user.js", "utf8");
 const start = source.indexOf("  let feedLoaderObserver = null;");
-const end = source.indexOf("  const postIdForCard =", start);
+const end = source.indexOf("  let initialFeedPending =", start);
 assert(start > 0 && end > start);
 let postCount = 12;
 let collapsed = true;
 let top = 1100;
 let pending;
 let exitObserver;
+let observedTarget;
 let cleared = 0;
-const target = {
+const feed = { style: { transform: "" } };
+const list = {
+  querySelector: () => (collapsed ? {} : null),
+  querySelectorAll: () => Array(postCount).fill(null),
+};
+const loaderWrapper = {
   style: {
-    transform: "",
-    getPropertyValue: () => "",
+    transform: "translateY(10px)",
+    getPropertyValue(name) {
+      return this[name] || "";
+    },
     getPropertyPriority: () => "",
     setProperty(name, value) {
       this[name] = value;
     },
   },
+  parentElement: feed,
   getBoundingClientRect: () => ({ top, bottom: top + 1 }),
-};
-const list = {
-  querySelector: () => (collapsed ? {} : null),
-  querySelectorAll: () => Array(postCount).fill(null),
 };
 const loader = {
   style: { display: "none" },
-  parentElement: target,
+  parentElement: loaderWrapper,
   closest: () => list,
 };
 const context = {
+  feedLoading: false,
   document: { querySelector: () => loader },
+  window: { addEventListener() {} },
   innerHeight: 1133,
   setTimeout: (callback) => {
     pending = callback;
@@ -47,7 +54,9 @@ const context = {
       this.callback = callback;
       exitObserver = this;
     }
-    observe() {}
+    observe(target) {
+      observedTarget = target;
+    }
     disconnect() {}
   },
 };
@@ -56,45 +65,44 @@ vm.runInNewContext(
   context,
 );
 context.wake();
-assert.equal(target.style.transform, "translateY(600vh)");
+assert.equal(loaderWrapper.style.transform, "translateY(600vh)");
+assert.equal(feed.style.transform, "", "do not move feed cards");
+assert.equal(observedTarget, loaderWrapper, "move native loader wrapper");
 exitObserver.callback([{ isIntersecting: true }]);
 assert.equal(
-  target.style.transform,
+  loaderWrapper.style.transform,
   "translateY(600vh)",
-  "stay outside until exit",
+  "stay outside until observer confirms exit",
 );
 exitObserver.callback([{ isIntersecting: false }]);
 assert.equal(
-  target.style.transform,
-  "",
-  "restore as soon as observer confirms exit",
+  loaderWrapper.style.transform,
+  "translateY(10px)",
+  "restore previous loader transform when observer confirms exit",
 );
 assert.equal(cleared, 1, "cancel fallback after observer callback");
 context.wake();
-assert.equal(target.style.transform, "", "only once per batch");
+assert.equal(loaderWrapper.style.transform, "translateY(10px)", "only once per batch");
 postCount = 24;
 context.wake();
-assert.equal(
-  target.style.transform,
-  "translateY(600vh)",
-  "retry when new posts arrive",
-);
+assert.equal(loaderWrapper.style.transform, "translateY(600vh)", "retry for new posts");
 pending();
 assert.equal(
-  target.style.transform,
-  "",
+  loaderWrapper.style.transform,
+  "translateY(10px)",
   "fallback restores when callback is missing",
 );
+assert.equal(feed.style.transform, "", "feed cards stay in place through restore");
 postCount = 36;
 loader.style.display = "block";
 context.wake();
-assert.equal(target.style.transform, "", "never wake during loading");
+assert.equal(loaderWrapper.style.transform, "translateY(10px)", "never wake during loading");
 loader.style.display = "none";
 top = 7000;
 context.wake();
-assert.equal(target.style.transform, "", "never wake outside observer range");
+assert.equal(loaderWrapper.style.transform, "translateY(10px)", "never wake outside observer range");
 top = 1100;
 collapsed = false;
 context.wake();
-assert.equal(target.style.transform, "", "never wake without collapsed posts");
-console.log("OK: collapsed feed intersection retry");
+assert.equal(loaderWrapper.style.transform, "translateY(10px)", "never wake without collapsed posts");
+console.log("OK: collapsed feed retries pagination by moving only loader wrapper");

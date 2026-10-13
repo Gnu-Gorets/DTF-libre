@@ -23,6 +23,9 @@ window.GM_removeValueChangeListener = () => {};
 window.GM_registerMenuCommand = (_, callback) => { window.menuCommand = callback; };
 window.GM_xmlhttpRequest = () => { throw Error('Unexpected request'); };
 window.unsafeWindow = window;
+performance.getEntriesByType = name => name === 'navigation' ? [{type: 'reload'}] : [];
+const scrollCalls = [];
+window.scrollTo = (...args) => scrollCalls.push(args);
 let limitClicks = 0, branchClicks = 0, hiddenCollapseClicks = 0;
 const limit = document.querySelector('.comments-limit');
 const addLimitButton = () => {
@@ -34,13 +37,20 @@ const addLimitButton = () => {
 };
 setTimeout(addLimitButton, 1100);
 document.querySelector('.comments .comment__expand').onclick = event => { branchClicks++; event.currentTarget.textContent = 'Свернуть'; };
-document.querySelector('.comment--hidden .comment__expand').onclick = event => { hiddenCollapseClicks++; event.currentTarget.textContent = '4 ответа'; };
+document.querySelector('.comment--hidden .comment__expand').onclick = event => {
+  hiddenCollapseClicks++;
+  event.currentTarget.textContent = '4 ответа';
+  requestAnimationFrame(() => window.scrollTo(0, 5812));
+};
 </script><script>${source}</script><script>
 setTimeout(() => {
   const fail = message => { document.body.dataset.result = 'FAIL: ' + message; };
   if (limitClicks !== 4) return fail('comment menu was not fully expanded');
   if (branchClicks !== 0) return fail('branches expanded while option disabled');
   if (hiddenCollapseClicks !== 1) return fail('hidden thread was not collapsed');
+  const lastScroll = scrollCalls.at(-1)?.[0];
+  if (scrollCalls.length < 2 || lastScroll?.top !== 0 || lastScroll?.behavior !== 'instant')
+    return fail('reload did not undo site scroll after hidden-thread collapse');
   window.menuCommand();
   const group = document.querySelector('[name=expandAllBranches]').closest('details');
   if (!group || group.open || group.querySelectorAll('label').length !== 2) return fail('comment subsettings are not collapsed together');
