@@ -8,8 +8,8 @@ const end = source.indexOf("  const postIdForCard =", start);
 assert(start > 0 && end > start);
 assert.match(
   source,
-  /page\.addEventListener\(\s*"DOMContentLoaded",\s*\(\)\s*=>\s*void loadExtraFeedPosts\(\),/,
-  "ignore the DOMContentLoaded event instead of using it as the target",
+  /apply\(\);\s*void loadExtraFeedPosts\(\);/,
+  "start extra loading immediately after first apply, without waiting for DOMContentLoaded",
 );
 assert.match(
   source,
@@ -124,7 +124,7 @@ async function createFeed({
     settings,
     wakeRestore: null,
     syncInitialFeedGate: () => {},
-    finishInitialFeed: () => { initialFinishes++; },
+    releaseInitialFeed: () => { initialFinishes++; },
     window: {
       innerHeight: 1000,
       addEventListener: (name, callback) => {
@@ -222,7 +222,7 @@ async function createFeed({
   await feed.context.run();
   assert.equal(feed.cards.length, 48, "loads to 2x baseline");
   assert.equal(feed.pagesLoaded(), 2);
-  assert.equal(feed.initialFinishes(), 1, "reveals completed initial batch");
+  assert.equal(feed.initialFinishes(), 1, "restores scrollbar after completed initial batch");
   assert.ok(feed.triggerWaits() >= 150, "waits for delayed loader trigger");
   assert.equal(
     feed.scrolledWhileLoaderVisible(),
@@ -254,7 +254,7 @@ async function createFeed({
   );
   await feed.context.run();
   assert.equal(feed.pagesLoaded(), 4, "does not fetch more when decreasing");
-  assert.equal(feed.initialFinishes(), 1, "later slider changes do not repeat gate");
+  assert.equal(feed.initialFinishes(), 1, "later slider changes do not repeat scrollbar suppression");
 
   feed.settings.feedPostMultiplier = 3;
   feed.context.sync();
@@ -420,8 +420,8 @@ async function createFeed({
   assert.equal(stalledTrigger.feedLoading(), false);
   assert.equal(stalledTrigger.loaderTranslate(), "");
   assert.equal(failedFeed.pagesLoaded(), 0, "stops after failed pagination");
-  assert.equal(failedFeed.initialFinishes(), 1, "reveals available cards after failed pagination");
-  assert.equal(stalledTrigger.initialFinishes(), 1, "reveals after bounded request wait");
+  assert.equal(failedFeed.initialFinishes(), 1, "restores scrollbar after failed pagination");
+  assert.equal(stalledTrigger.initialFinishes(), 1, "restores scrollbar after bounded request wait");
   console.log("OK: live multiplier, native loading, and late-feed stability");
 })().catch((error) => {
   console.error(error);

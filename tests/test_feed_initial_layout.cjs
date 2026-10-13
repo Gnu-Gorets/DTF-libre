@@ -12,8 +12,8 @@ assert(start > 0, "initial gate implementation exists");
 assert(!source.includes('content: "Загрузка…"'), "does not add loading text");
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "dtf-feed-layout-"));
 const fixture = `<!doctype html><html><head>
-<style>${css}</style><style>body{margin:0}.content{height:200px}</style>
-</head><body><main class="feed-page"><div class="content-list"><div id="posts"></div><div id="trigger"><div class="content-list__loader" style="display:none"></div></div></div></main>
+<style>${css}</style><style>html{overflow-y:scroll}body{margin:0}.content,.content-skeleton{height:200px}header{height:60px}</style>
+</head><body><header id="header"><button>Write</button></header><main class="feed-page"><div id="feed-header">New</div><div class="content-list"><div id="skeleton"><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div><div class="content-skeleton"></div></div><div id="posts"></div><div id="trigger"><div class="content-list__loader" style="display:none"></div></div></div></main>
 <script>
 const get = (key, fallback) => ({feedExtraPosts:true, feedPostMultiplier:3})[key] ?? fallback;
 let wakeRestore = null;
@@ -24,13 +24,17 @@ const addPosts = count => {
     card.className = 'content'; posts.append(card);
   }
 };
-addPosts(24);
 const heights = [];
+const checkVisible = element => {
+  const computed = getComputedStyle(element);
+  if (computed.visibility !== 'visible' || computed.display === 'none' || !element.getBoundingClientRect().height) throw Error('hidden page element: ' + element.id);
+};
 const checkGeometry = () => {
   heights.push(document.documentElement.scrollHeight);
-  if (getComputedStyle(posts).visibility !== 'hidden') throw Error('intermediate posts visible');
+  [document.body, document.querySelector('#header'), document.querySelector('#feed-header'), posts].forEach(checkVisible);
   const rootStyle = getComputedStyle(document.documentElement);
-  if (rootStyle.overflowY !== 'hidden' || rootStyle.scrollbarGutter !== 'stable') throw Error('intermediate scrollbar not withheld');
+  if (rootStyle.overflowY !== 'scroll' || !rootStyle.scrollbarColor.includes('rgba(0, 0, 0, 0)')) throw Error('scrollbar must be transparent without blocking scrolling');
+  if (getComputedStyle(document.querySelector('.feed-page')).position !== 'static' || getComputedStyle(document.querySelector('.content-list')).position !== 'static') throw Error('cards removed from native flow');
 };
 const loader = document.querySelector('.content-list__loader');
 let requests = 0;
@@ -44,22 +48,39 @@ const observer = new IntersectionObserver(([entry]) => {
     addPosts(12); checkGeometry();
   }, 4000);
 }, {rootMargin:'200% 0px'});
-observer.observe(document.querySelector('#trigger'));
 ${source.slice(start, end)}
-prepareInitialFeed = () => { document.body.dataset.prepared = 'yes'; };
 syncInitialFeedGate();
+const gutter = innerWidth - document.documentElement.clientWidth;
+document.documentElement.classList.remove('dtf-vm-feed-pending');
+if (innerWidth - document.documentElement.clientWidth !== gutter) throw Error('scrollbar suppression changes gutter');
+syncInitialFeedGate();
+if (document.readyState !== 'loading') throw Error('fixture missed parser-time startup');
+[document.body, document.querySelector('#header'), document.querySelector('#feed-header'), document.querySelector('#skeleton')].forEach(checkVisible);
+void loadExtraFeedPosts();
 setTimeout(() => {
-checkGeometry();
-loadExtraFeedPosts().then(() => new Promise(requestAnimationFrame)).then(() => {
-  if (requests !== 4 || feedPosts().length !== 72) throw Error('native pagination failed: ' + requests);
-  if (heights.length !== 5 || heights.some(height => height !== heights[0])) throw Error('intermediate document height changed: ' + heights);
-  if (document.documentElement.scrollHeight <= heights[0]) throw Error('completed cards not in document flow');
-  if (document.body.dataset.prepared !== 'yes') throw Error('layout not prepared before reveal');
-  if (getComputedStyle(posts).visibility !== 'visible') throw Error('completed posts invisible');
-  if (scrollY !== 0) throw Error('viewport moved');
-  document.body.dataset.result = 'PASS';
-}).catch(error => { document.body.dataset.result = 'FAIL: ' + error.message; });
-}, 200);
+  try {
+    scrollTo(0, 200);
+    if (scrollY !== 200) throw Error('scrolling blocked during skeleton display');
+    scrollTo(0, 0);
+    addPosts(24);
+    document.querySelector('#skeleton').remove();
+    checkGeometry();
+    observer.observe(document.querySelector('#trigger'));
+  } catch (error) { document.body.dataset.result = 'FAIL: ' + error.message; }
+}, 500);
+const completion = setInterval(() => {
+  if (feedLoading || feedPosts().length !== 72) return;
+  clearInterval(completion);
+  try {
+    if (requests !== 4) throw Error('native pagination failed: ' + requests);
+    if (heights.length !== 5 || heights.some((height, index) => index && height <= heights[index - 1])) throw Error('new cards not in document flow: ' + heights);
+    if (document.documentElement.classList.contains('dtf-vm-feed-pending')) throw Error('scrollbar not restored');
+    [document.body, document.querySelector('#header'), posts].forEach(checkVisible);
+    if (scrollY !== 0) throw Error('viewport moved during pagination');
+    document.body.dataset.result = 'PASS';
+  } catch (error) { document.body.dataset.result = 'FAIL: ' + error.message; }
+}, 50);
+addEventListener('error', event => { document.body.dataset.result = 'FAIL: ' + event.message; });
 </script></body></html>`;
 fs.writeFileSync(path.join(dir, "test.html"), fixture);
 (async () => {
@@ -95,7 +116,7 @@ fs.writeFileSync(path.join(dir, "test.html"), fixture);
       await pause();
     }
     assert.equal(result, "PASS", result || "missing browser result");
-    console.log("OK: stable intermediate geometry, atomic 3x reveal, hidden native loader, and no forced scroll");
+    console.log("OK: visible skeleton/header/cards, transparent scrollbar with unchanged gutter, manual scrolling, parser-time startup, and native 3x pagination");
   } finally {
     socket?.close();
     const exited = new Promise(resolve => browser.once("exit", resolve));

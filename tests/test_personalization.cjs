@@ -4,7 +4,7 @@ const vm = require("node:vm");
 
 const source = fs.readFileSync("dtf.user.js", "utf8");
 const start = source.indexOf("  const personalizationColors =");
-const end = source.indexOf("  const waitForDtfStyles =", start);
+const end = source.indexOf("  const attachStyles =", start);
 assert(start > 0 && end > start);
 const values = new Map();
 const style = {

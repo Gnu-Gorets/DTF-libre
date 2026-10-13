@@ -613,7 +613,6 @@
   let initialFeedPending = Boolean(get("feedExtraPosts", false));
   const initialFeedPath = location.pathname;
   let initialFeedElement = null;
-  let prepareInitialFeed = () => {};
   const releaseInitialFeed = () => {
     if (!initialFeedPending) return;
     initialFeedPending = false;
@@ -639,16 +638,6 @@
   window.addEventListener("pageshow", (event) => {
     if (event.persisted) releaseInitialFeed();
   });
-  const finishInitialFeed = () => {
-    if (!initialFeedPending) return;
-    requestAnimationFrame(() => {
-      try {
-        prepareInitialFeed();
-      } finally {
-        releaseInitialFeed();
-      }
-    });
-  };
   let feedInitialPostCount = null;
   let feedInitialObserver = null;
   let feedPageSize = 0;
@@ -806,7 +795,7 @@
     } finally {
       if (loaderClassAdded) feed.classList.remove("dtf-vm-feed-loading");
       feedLoading = false;
-      if (initialLoad) finishInitialFeed();
+      if (initialLoad) releaseInitialFeed();
     }
   };
   window.addEventListener(
@@ -1043,10 +1032,9 @@
     @media (max-width: 924px) { .layout:has(.view) { --layout-max-width: 100vw !important; } }
     html.dtf-vm-stretch-right .layout:has(.view) { --layout-right-aside-width: 0px !important; }
     html.dtf-vm-stretch-right .layout:has(.entry) { --layout-max-content-width: var(--dtf-feed-width) !important; --layout-max-width: var(--dtf-layout-width) !important; --layout-right-aside-width: 0px !important; }
-    /* Keep pending cards measurable; reserve scrollbar gutter until batch is ready. */
-    html.dtf-vm-feed-pending:has(.feed-page) { overflow-y: hidden !important; scrollbar-gutter: stable !important; }
-    html.dtf-vm-feed-pending .feed-page { position: relative !important; height: max(1px, calc(100vh - 160px)) !important; overflow: hidden !important; }
-    html.dtf-vm-feed-pending .feed-page .content-list { position: absolute !important; width: 100% !important; visibility: hidden !important; pointer-events: none !important; }
+    /* Transparent scrollbar preserves native gutter, layout, and scrolling. */
+    html.dtf-vm-feed-pending:has(.feed-page) { scrollbar-color: transparent transparent !important; }
+    html.dtf-vm-feed-pending:has(.feed-page)::-webkit-scrollbar-thumb, html.dtf-vm-feed-pending:has(.feed-page)::-webkit-scrollbar-track { background: transparent !important; }
     .feed-page:has(.dtf-vm-minimized-post) .content-list__loader, .feed-page.dtf-vm-feed-loading .content-list__loader { display: block !important; box-sizing: border-box !important; width: 1px !important; height: 1px !important; min-height: 1px !important; padding: 0 !important; border: 0 !important; overflow: hidden !important; opacity: 0 !important; pointer-events: none !important; }
     .dtf-vm-centered .block-wrapper--media .block-media { display: flex !important; flex-direction: column !important; align-items: center !important; }
     .dtf-vm-centered .block-wrapper--media .andropov-media { margin-inline: auto !important; }
@@ -1146,7 +1134,6 @@
     .dtf-vm-topic-show-all { width: 100%; color: inherit; background: none; border: 0; font: inherit; text-align: left; }
     html.dtf-vm-hide-footer :has(> [data-section="footer"]) { display: none !important; }
     html.dtf-vm-hide-donations-menu [href*="/donat"], html.dtf-vm-hide-plus-menu [href*="/plus"] { display: none !important; }
-    html.dtf-vm-waiting-css body { visibility: hidden !important; }
     @media (min-width: 1240px) {
       html.dtf-vm-hide-right-sidebar .layout > .aside.aside--right { display: none !important; }
       .dtf-vm-live-panel { grid-column: 3; grid-row: 1; margin-left: 8px; position: sticky; top: var(--layout-header-height); width: var(--layout-right-aside-width, 320px); height: calc(100vh - var(--layout-header-height)); padding-top: 16px; color: var(--theme-color-text-primary); }
@@ -1293,51 +1280,6 @@
     set("personalizationEnabled", true);
     applyPersonalization();
   };
-  const waitForDtfStyles = () => {
-    const root = document.documentElement;
-    if (!root) {
-      const observer = new MutationObserver(() => {
-        if (!document.documentElement) return;
-        observer.disconnect();
-        waitForDtfStyles();
-      });
-      observer.observe(document, { childList: true });
-      return;
-    }
-    const className = "dtf-vm-waiting-css";
-    root.classList.add(className);
-    let settled = false;
-    let observer;
-    const timeout = setTimeout(reveal, 5000);
-    function reveal() {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      observer?.disconnect();
-      root.classList.remove(className);
-    }
-    const watchStylesheet = () => {
-      const link = document.querySelector(
-        'link[rel="stylesheet"][href*="/assets/index-"]',
-      );
-      if (!link) return false;
-      if (document.readyState === "complete" && link.sheet) reveal();
-      else {
-        link.addEventListener("load", reveal, { once: true });
-        link.addEventListener("error", reveal, { once: true });
-        window.addEventListener("load", reveal, { once: true });
-      }
-      return true;
-    };
-    if (!watchStylesheet()) {
-      observer = new MutationObserver(() => {
-        if (watchStylesheet()) observer.disconnect();
-      });
-      observer.observe(root, { childList: true, subtree: true });
-    }
-  };
-  waitForDtfStyles();
-
   const attachStyles = () => {
     if (!document.head) return false;
     if (style.parentElement !== document.head) document.head.append(style);
@@ -2955,7 +2897,6 @@
       updateRightPanelControls();
       updateTopButton();
     };
-    prepareInitialFeed = apply;
 
     const openSettings = () => {
       if (document.querySelector(".dtf-vm-overlay")) return;
@@ -3563,15 +3504,7 @@
       });
     else rememberInitialVideoPosters();
     apply();
-    if (document.readyState === "loading")
-      page.addEventListener(
-        "DOMContentLoaded",
-        () => void loadExtraFeedPosts(),
-        {
-          once: true,
-        },
-      );
-    else void loadExtraFeedPosts();
+    void loadExtraFeedPosts();
     window.addEventListener("resize", apply);
     let applyFrame = null;
     const scheduleApply = () => {
