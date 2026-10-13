@@ -619,6 +619,7 @@
   let feedPageSize = 0;
   let feedBottomLoadHandled = false;
   let feedLoading = false;
+  let feedVisibilityNeedsSync = false;
   const feedPosts = () => [
     ...document.querySelectorAll(".feed-page .content-list .content"),
   ];
@@ -720,6 +721,7 @@
     if (syncVisibility) syncFeedPostVisibility();
     if (!get("feedExtraPosts", false) || feedLoading) return;
     const explicitTarget = target !== null;
+    feedVisibilityNeedsSync = false;
     feedLoading = true;
     wakeRestore?.();
     let loaderClassAdded = false;
@@ -773,7 +775,10 @@
         }
         if (count <= previousCount) break;
         feedPageSize = count - previousCount;
-        if (syncVisibility) syncFeedPostVisibility();
+        if (feedVisibilityNeedsSync) {
+          syncFeedPostVisibility();
+          feedVisibilityNeedsSync = false;
+        }
       }
     } finally {
       if (loaderClassAdded) feed.classList.remove("dtf-vm-feed-loading");
@@ -3119,6 +3124,7 @@
       };
       overlay.querySelector("[name=feedPostMultiplier]").oninput = (event) => {
         const multiplier = Number(event.target.value);
+        if (feedLoading) feedVisibilityNeedsSync = true;
         set("feedPostMultiplier", multiplier);
         event.target.closest("label").querySelector("output").value =
           `${multiplier}×`;
@@ -3211,6 +3217,7 @@
           set(name, event.target.checked);
           syncDependencies();
           if (name === "feedExtraPosts") {
+            if (feedLoading) feedVisibilityNeedsSync = true;
             syncFeedPostVisibility();
             void loadExtraFeedPosts();
           }

@@ -158,8 +158,10 @@ async function createFeed({
         if (succeeds) {
           for (let i = 0; i < 12; i++) cards.push(makeCard());
           pagesLoaded++;
-          if (changeMultiplierAfterPage?.page === pagesLoaded)
+          if (changeMultiplierAfterPage?.page === pagesLoaded) {
             settings.feedPostMultiplier = changeMultiplierAfterPage.multiplier;
+            context.markSliderChange();
+          }
         }
       }
       callback();
@@ -168,7 +170,7 @@ async function createFeed({
     Date: { now: () => now },
   };
   vm.runInNewContext(
-    `${source.slice(start, end)}\nglobalThis.run = loadExtraFeedPosts; globalThis.sync = syncFeedPostVisibility;`,
+    `${source.slice(start, end)}\nglobalThis.run = loadExtraFeedPosts; globalThis.sync = syncFeedPostVisibility; globalThis.markSliderChange = () => { feedVisibilityNeedsSync = true; syncFeedPostVisibility(); };`,
     context,
   );
   return {
@@ -266,6 +268,22 @@ async function createFeed({
   );
   assert.equal(lateBaselineFeed.pagesLoaded(), 3);
 
+  const lateAfterBaselineFeed = await createFeed({
+    enabled: true,
+    multiplier: 2,
+    lateInitialCount: 36,
+    lateInitialAt: 500,
+  });
+  await lateAfterBaselineFeed.context.run();
+  assert.equal(lateAfterBaselineFeed.cards.length, 72);
+  assert.equal(
+    lateAfterBaselineFeed.cards.filter((card) =>
+      card.classList.contains("dtf-vm-feed-post-hidden"),
+    ).length,
+    0,
+    "does not hide late DTF posts when selected multiplier is unchanged",
+  );
+
   const lateFeed = await createFeed({
     enabled: true,
     multiplier: 3,
@@ -353,7 +371,7 @@ async function createFeed({
   await failedFeed.context.run();
   assert.equal(failedFeed.scrollTop(), 0, "restores scroll when request fails");
   assert.equal(failedFeed.pagesLoaded(), 0, "stops after failed pagination");
-  console.log("OK: multiplier, doubled native loading, and stable page scroll");
+  console.log("OK: live multiplier, native loading, and late-feed stability");
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;
