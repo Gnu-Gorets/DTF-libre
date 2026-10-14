@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.96
+// @version      0.0.97
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -106,15 +106,11 @@
     const width = Number(slideData.w || slideData.width);
     const height = Number(slideData.h || slideData.height);
     if (!(width > 0 && height > 0)) return;
-    const zoom = Math.max(
-      1,
-      Math.min(
-        4,
-        (page.innerWidth * 0.9) / width,
-        (page.innerHeight * 0.9) / height,
-      ),
+    const zoom = Math.min(
+      4,
+      (page.innerWidth * 0.9) / width,
+      (page.innerHeight * 0.9) / height,
     );
-    if (zoom <= zoomLevels.initial) return;
     zoomLevels.initial = zoom;
     zoomLevels.secondary = Math.max(
       zoomLevels.secondary,
