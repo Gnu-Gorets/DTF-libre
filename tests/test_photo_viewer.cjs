@@ -40,12 +40,12 @@ pswp.init();
 assert.equal(zoomAtInit, expected, "native open starts at final zoom");
 assert.ok(levels.secondary > levels.initial);
 
-const largeLevels = { initial: 0.6, secondary: 1, max: 4 };
+const largeLevels = { initial: 1, secondary: 1, max: 4 };
 events.zoomLevelsUpdate({
   zoomLevels: largeLevels,
   slideData: { width: 3000, height: 2000 },
 });
-assert.equal(largeLevels.initial, 1, "large images open at least at 1:1");
+assert.ok(largeLevels.initial < 1, "large images fit within the viewport");
 
 events.destroy();
 delete page.pswp;
