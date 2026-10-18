@@ -20,10 +20,24 @@ assert.match(
 );
 const selector =
   ".block-wrapper--media .andropov-image img, .block-wrapper--gallery .andropov-image img";
-const mediaImage = { loading: "lazy", decoding: "sync" };
-const galleryImage = { loading: "lazy", decoding: "sync" };
+const makeImage = () => ({
+  loading: "lazy",
+  decoding: "sync",
+  dataset: {},
+  src: "https://leonardo.osnova.io/image/-/scale_crop/1200x/",
+  currentSrc: "https://leonardo.osnova.io/image/-/scale_crop/1200x/",
+  addEventListener(name, callback) {
+    if (name === "error") this.onerror = callback;
+  },
+  closest: () => ({ querySelectorAll: () => [] }),
+  removeAttribute(name) {
+    if (name === "srcset") this.srcset = "";
+  },
+});
+const mediaImage = makeImage();
+const galleryImage = makeImage();
 const avatar = { loading: "lazy", decoding: "sync" };
-const addedMediaImage = { loading: "lazy", decoding: "sync" };
+const addedMediaImage = makeImage();
 const document = {
   querySelectorAll(value) {
     assert.equal(value, selector);
@@ -36,7 +50,7 @@ const addedPost = {
     return [addedMediaImage];
   },
 };
-const context = { document };
+const context = { document, URL };
 vm.runInNewContext(
   `${source.slice(start, end)}\nglobalThis.prioritizePostImages = prioritizePostImages;`,
   context,
@@ -49,4 +63,7 @@ for (const image of [mediaImage, galleryImage, addedMediaImage]) {
 }
 assert.equal(avatar.loading, "lazy", "avatars must stay lazy");
 assert.equal(avatar.decoding, "sync", "unrelated images remain untouched");
-console.log("OK: post media and dynamically added galleries load eagerly; avatars stay lazy");
+mediaImage.onerror();
+assert.equal(mediaImage.src, "https://leonardo.osnova.io/image");
+assert.equal(mediaImage.srcset, "");
+console.log("OK: failed transformed images fall back to original; avatars stay lazy");
