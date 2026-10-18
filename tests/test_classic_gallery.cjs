@@ -41,5 +41,8 @@ assert.match(
 );
 assert.match(source, /flex: 0 0 calc\(\(100% - 4px\) \/ 3\)/);
 assert.match(source, /height: 100% !important; object-fit: cover/);
+assert.match(source, /andropov-media\.andropov-video \{ flex: 1; width: 100% !important; height: 100% !important/);
+assert.match(source, /:has\(> :nth-child\(3\):last-child\) \{ display: grid !important; grid-template: repeat\(2, minmax\(0, 1fr\)\) \/ 2fr 1fr; aspect-ratio: 4 \/ 3;/);
+assert.match(source, /\.andropov-video video \{ width: 100%; height: 100%; object-fit: cover;/);
 assert.match(source, /classicGallery: \["galleryPreviewCount"\]/);
 console.log("OK: classic gallery limits, overflow tile, and disabled cleanup");
