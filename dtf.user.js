@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.98
+// @version      0.0.99
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -2700,6 +2700,20 @@
       images.forEach((image) => {
         image.loading = "eager";
         image.decoding = "async";
+        if (image.dataset.dtfImageFallback) return;
+        image.dataset.dtfImageFallback = "";
+        image.addEventListener("error", () => {
+          const url = new URL(image.currentSrc || image.src);
+          if (url.hostname !== "leonardo.osnova.io") return;
+          const original = url.pathname.split("/-/")[0];
+          if (!original || original === url.pathname) return;
+          image
+            .closest("picture")
+            ?.querySelectorAll("source")
+            .forEach((source) => source.removeAttribute("srcset"));
+          image.removeAttribute("srcset");
+          image.src = `${url.origin}${original}`;
+        });
       });
     };
     const setQuality = (enabled, galleryEnabled = false) => {
