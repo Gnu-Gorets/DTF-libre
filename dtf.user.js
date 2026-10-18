@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.97
+// @version      0.0.98
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -1067,8 +1067,11 @@
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt { display: flex !important; flex-wrap: wrap; justify-content: center; gap: 2px; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * { position: relative; display: flex; flex: 0 0 calc((100% - 4px) / 3); min-width: 0; width: auto !important; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-hidden] { display: none !important; }
-    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-image { flex: 1; width: 100% !important; height: 100% !important; max-width: 100% !important; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-image, html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-video { flex: 1; width: 100% !important; height: 100% !important; max-width: 100% !important; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-media.andropov-image img { width: 100% !important; height: 100% !important; object-fit: cover; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt:has(> :nth-child(3):last-child) { display: grid !important; grid-template: repeat(2, minmax(0, 1fr)) / 2fr 1fr; aspect-ratio: 4 / 3; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt:has(> :nth-child(3):last-child) > :first-child { grid-row: span 2; }
+    html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > * .andropov-video video { width: 100%; height: 100%; object-fit: cover; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-more] .andropov-media { opacity: 0; }
     html.dtf-vm-classic-gallery .block-wrapper--gallery .mvqlyolt > [data-dtf-gallery-more]::after { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; background: #0009; border-radius: 10px; content: attr(data-dtf-gallery-more); font-size: clamp(24px, 5vw, 48px); font-weight: 600; pointer-events: none; }
     .content-nsfw { display: none !important; }
