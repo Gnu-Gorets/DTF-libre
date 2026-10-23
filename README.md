@@ -8,7 +8,7 @@ Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open
 
 ## Initial feed loading
 
-On F5/ctrl+F5, page is hidden until browser fires `load`, with a 10-second fallback. Native skeletons, header controls, and arriving cards remain visible during normal loading. Userscript does not hold cards until complete batch arrives. Styles and layout still depend on native DTF CSS loading.
+On F5/ctrl+F5, page is hidden until browser fires `load`, with 10-second fallback. Native skeletons, header controls, and arriving cards remain visible during normal loading. Userscript does not hold cards until complete batch arrives. Styles and layout still depend on native DTF CSS loading.
 
 When **Дополнительно загружать посты** is enabled on page load, only scrollbar colors become transparent until selected batch is ready. Native gutter and scrolling remain unchanged. Scrollbar returns after completion or failed pagination, at most 60 seconds, or when setting is disabled or route changes. No loading text or forced scroll is added. Later infinite scrolling remains native and changes scrollbar size as posts arrive.
 
@@ -20,8 +20,8 @@ Extra loading starts after first userscript layout pass without waiting for DOMC
 
 - Post media and gallery images load eagerly, including when new posts are added while scrolling. Avatar and other small images keep native lazy loading. Chromium handles image requests in parallel; no custom sequential download queue exists.
 - Video poster images are prefetched from API and initial server-rendered feed data before playback. MP4 streams remain under DTF's lazy-loading behavior to avoid downloading unseen videos in full.
-- Post media uses asynchronous image decoding. If a transformed Leonardo image fails, the userscript retries the original image URL without CDN transforms; failures of the original request remain visible as provided by the browser.
-- The image quality setting selects responsive image sizes through `picture`/`srcset`, accounts for pixel density once, and limits each variant to 2560 px. Repeated DOM updates preserve selected URLs; resize recomputes sizes, disabling quality restores original URLs and styles. Classic galleries use uncropped original images to avoid blur when CSS enlarges them.
+- Post media uses asynchronous image decoding. If transformed Leonardo image fails, userscript retries original image URL without CDN transforms; failures of original request remain visible as provided by browser.
+- Image quality setting selects responsive image sizes through `picture`/`srcset`, accounts for pixel density once, and limits each variant to 2560 px. Repeated DOM updates preserve selected URLs; resize recomputes sizes, disabling quality restores original URLs and styles. Classic galleries use uncropped original images to avoid blur when CSS enlarges them.
 - DOM updates share one animation-frame callback instead of repeatedly applying settings within one frame.
 
 Eager loading starts requests for rendered post images, including off-screen gallery slides. Classic galleries also use full originals, so they can consume more bandwidth. Disable image quality enhancement when transfer size matters. Network stalls and unavailable CDN files cannot be eliminated by userscript.
@@ -36,6 +36,6 @@ for test in tests/*.cjs; do node "$test" || exit; done
 python3 tests/test_topics_api.py
 ```
 
-Chromium checks use temporary profiles and minimal GM API stubs; `tests/test_chromium_topics.cjs` covers settings toggles and Live reconnect lifecycle. Real integration was smoke-tested separately in a temporary profile with Violentmonkey 2.49.0: install this userscript, enable **Allow User Scripts** in `chrome://extensions`, restart Chromium, open DTF, then verify injected styles and `.dtf-vm-top`. A client-side route change retained userscript behavior. This manager check is manual; it requires no login.
+Chromium checks use temporary profiles and minimal GM API stubs; `tests/test_chromium_topics.cjs` covers settings toggles and Live reconnect lifecycle. Real integration was smoke-tested separately in temporary profile with Violentmonkey 2.49.0: install this userscript, enable **Allow User Scripts** in `chrome://extensions`, restart Chromium, open DTF, then verify injected styles and `.dtf-vm-top`. Client-side route change retained userscript behavior. Manager check is manual; it requires no login.
 
 Matched sample of 37 WebP image responses at DPR=2 transferred about 6.36 MB before correction and 3.78 MB after correction. This is sample-specific bandwidth reduction, not site-wide speed guarantee. CDN/network latency remained variable.
