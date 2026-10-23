@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.99
+// @version      0.0.101
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -96,6 +96,23 @@
   const syncHashtagCards = () =>
     document.querySelectorAll(".content").forEach(syncHashtagCard);
   const page = unsafeWindow;
+  const waitForDtfStyles = () => {
+    if (page.performance.getEntriesByType("navigation")[0]?.type !== "reload")
+      return;
+    const root = document.documentElement;
+    if (!root) return;
+    const previousVisibility = root.style.visibility;
+    root.style.visibility = "hidden";
+    let timeout;
+    const release = () => {
+      root.style.visibility = previousVisibility;
+      clearTimeout(timeout);
+    };
+    timeout = setTimeout(release, 10000);
+    if (document.readyState === "complete") release();
+    else page.addEventListener("load", release, { once: true });
+  };
+  waitForDtfStyles();
   const resetScrollOnReload = () => {
     if (page.performance.getEntriesByType("navigation")[0]?.type !== "reload")
       return;

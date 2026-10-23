@@ -8,7 +8,7 @@ Install [`dtf.user.js`](dtf.user.js) through Violentmonkey or Tampermonkey. Open
 
 ## Initial feed loading
 
-Native skeletons, header controls, and arriving cards remain visible during loading. Userscript does not hide page while waiting for DTF stylesheets or hold cards until complete batch arrives. Styles and layout still depend on native DTF CSS loading.
+On F5/ctrl+F5, page is hidden until the browser fires `load`, with a 10-second fallback. Native skeletons, header controls, and arriving cards remain visible during normal loading. Userscript does not hold cards until complete batch arrives. Styles and layout still depend on native DTF CSS loading.
 
 When **Дополнительно загружать посты** is enabled on page load, only scrollbar colors become transparent until selected batch is ready. Native gutter and scrolling remain unchanged. Scrollbar returns after completion or failed pagination, at most 60 seconds, or when setting is disabled or route changes. No loading text or forced scroll is added. Later infinite scrolling remains native and changes scrollbar size as posts arrive.
 
