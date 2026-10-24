@@ -3,6 +3,7 @@
 1. For every `dtf.user.js` change, increment `@version` patch.
 2. Run `node --check dtf.user.js` and relevant tests. README lists full local checks.
 3. Keep `docs/plans/` local and uncommitted; never force-add plans.
+4. Before committing or opening/updating a PR, proofread commit subject/body and PR title/description for clarity, grammar, and repository style.
 
 ## Browser checks
 
