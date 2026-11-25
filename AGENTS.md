@@ -1,6 +1,6 @@
 # Repository Instructions
 
-1. For every `dtf.user.js` change, increment `@version` patch.
+1. For each PR that changes `dtf.user.js`, increment `@version` patch by one. Do not increment again for additional commits in the same PR.
 2. Run `node --check dtf.user.js` and relevant tests. README lists full local checks.
 3. Keep `docs/plans/` local and uncommitted; never force-add plans.
 4. Before committing or opening/updating PR, proofread commit subject/body and PR title/description for clarity, grammar, and repository style.
