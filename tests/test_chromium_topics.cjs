@@ -99,6 +99,8 @@ setTimeout(async () => {
   if (getComputedStyle(educationLink).display === 'none' || getComputedStyle(services).display === 'none' || getComputedStyle(servicesSection).display === 'none') return fail('restore ads and legacy services group');
   const hideServices = document.querySelector('.dtf-vm-dialog [name=hideServices]');
   if (!hideServices) return fail('missing hide-services setting');
+  const sidebarSettings = [...hideServices.closest('.dtf-vm-section').querySelectorAll('label')].map(label => label.textContent.trim());
+  if (sidebarSettings.indexOf('Скрыть раздел «Сервисы»') < 0 || sidebarSettings.indexOf('Скрыть раздел «Сервисы»') > sidebarSettings.indexOf('Скрыть раздел «Игры»') || sidebarSettings.indexOf('Скрыть раздел «Игры»') > sidebarSettings.indexOf('Скрыть раздел «Темы»')) return fail('services setting must appear before games and topics settings');
   hideServices.checked = true; hideServices.onchange({target: hideServices});
   if (getComputedStyle(servicesSection).display !== 'none') return fail('hide complete services group');
   hideServices.checked = false; hideServices.onchange({target: hideServices});
