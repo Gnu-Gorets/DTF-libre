@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.100
+// @version      0.0.101
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -1151,7 +1151,7 @@
     .dtf-vm-top { position: fixed; right: 24px; bottom: 24px; z-index: 2147483646; display: grid; place-items: center; width: 48px; height: 48px; padding: 0; color: #fff !important; background: #1685ff !important; border: 0; border-radius: 50%; box-shadow: 0 3px 12px #0007; font: 28px/1 system-ui,sans-serif !important; cursor: pointer; }
     .dtf-vm-top[hidden] { display: none !important; }
     html.dtf-vm-hide-popular a[href="/popular"], html.dtf-vm-hide-new a[href="/new"], html.dtf-vm-hide-my a[href="/my"], html.dtf-vm-hide-messages a[href="/m"], html.dtf-vm-hide-rating a[href="/discovery"] { display: none !important; }
-    html.dtf-vm-hide-games :has(> [data-section="games"]), html.dtf-vm-hide-topics :has(> [data-section="topics"]) { display: none !important; }
+    html.dtf-vm-hide-games :has(> button[aria-controls] + div a[href="/quiz"]), html.dtf-vm-hide-games :has(> [data-section="games"]), html.dtf-vm-hide-topics :has(> [data-section="topics"]) { display: none !important; }
     .scroll-next-button { display: none !important; }
     html.dtf-vm-back-to-top .scroll-prev-button, html.dtf-vm-back-to-top .scroll-to-top { display: none !important; }
     .sidebar, .sidebar *, .layout__left-aside, .layout__left-aside * { scrollbar-width: none; }
@@ -1177,7 +1177,7 @@
     .dtf-vm-topic-original { display: none !important; }
     .dtf-vm-topic-extras[hidden], .dtf-vm-topic-extras > [hidden] { display: none !important; }
     .dtf-vm-topic-show-all { width: 100%; color: inherit; background: none; border: 0; font: inherit; text-align: left; }
-    html.dtf-vm-hide-footer :has(> [data-section="footer"]) { display: none !important; }
+    html.dtf-vm-hide-footer :has(> button[aria-controls] + div a[href="/about"]), html.dtf-vm-hide-footer :has(> [data-section="footer"]) { display: none !important; }
     html.dtf-vm-hide-donations-menu [href*="/donat"], html.dtf-vm-hide-plus-menu [href*="/plus"] { display: none !important; }
     @media (min-width: 1240px) {
       html.dtf-vm-hide-right-sidebar .layout > .aside.aside--right { display: none !important; }
