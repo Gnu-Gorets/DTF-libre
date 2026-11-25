@@ -29,6 +29,7 @@ for (const [option, section] of Object.entries({
     `${option} selector ignores changing DTF classes`,
   );
 }
+assert.match(source, /html\.dtf-vm-hide-services :has\(> button\[aria-controls\] \+ div a\[href="\/store"\]\)/);
 assert.match(source, /html\.dtf-vm-hide-games :has\(> button\[aria-controls\] \+ div a\[href="\/quiz"\]\)/);
 assert.match(source, /html\.dtf-vm-hide-footer :has\(> button\[aria-controls\] \+ div a\[href="\/about"\]\)/);
 assert.match(
