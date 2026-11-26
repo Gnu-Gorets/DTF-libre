@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         DTF Libre
 // @namespace    https://dtf.ru/
-// @version      0.0.101
+// @version      0.0.102
 // @description  Customize feed, improve image loading, add topic search, comment controls, themes, and more.
 // @match        https://dtf.ru/*
 // @match        https://*.dtf.ru/*
@@ -2437,7 +2437,11 @@
           : "",
       }));
     const topicSection = () => {
-      const title = document.querySelector('[data-section="topics"]');
+      const title =
+        document.querySelector('[data-section="topics"]') ||
+        [...document.querySelectorAll("button[aria-controls]")].find(
+          (button) => button.textContent.trim() === "Темы",
+        );
       const section = title?.parentElement;
       const content =
         section &&
